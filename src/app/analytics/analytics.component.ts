@@ -5,7 +5,7 @@ import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { AnalyticsService, WorkTeller } from './analytics.service';
 import transactionsData from '../data/transactions.json';
 
-
+// Register Chart.js components
 Chart.register(...registerables);
 
 @Component({
@@ -76,23 +76,43 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
   }
 
   getWeeklyTotals(transactions: WorkTeller[]): { label: string; value: number }[] {
-    const weekly = { 'Week 1': 0, 'Week 2': 0, 'Week 3': 0, 'Week 4': 0 };
+    const weekly: { [key: string]: number } = {};
 
     transactions.forEach((t) => {
       const d = new Date(t.date || t.createdAt);
-      const day = d.getDate();
-      const week = day <= 7 ? 'Week 1' : day <= 14 ? 'Week 2' : day <= 21 ? 'Week 3' : 'Week 4';
+      // Get the Monday of the week this date falls into
+      const date = new Date(d);
+      const day = date.getDay();
+      const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+      const monday = new Date(date.setDate(diff));
 
-      weekly[week] += t.total;
+      // Format week label as "MMM DD - MMM DD"
+      const endDate = new Date(monday);
+      endDate.setDate(endDate.getDate() + 6);
+
+      const startFormatted = monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const endFormatted = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const weekLabel = `${startFormatted} - ${endFormatted}`;
+
+      if (!weekly[weekLabel]) {
+        weekly[weekLabel] = 0;
+      }
+      weekly[weekLabel] += t.total;
     });
 
-    return Object.entries(weekly).map(([label, value]) => ({ label, value }));
+    return Object.entries(weekly)
+      .sort((a, b) => {
+        const aDate = new Date(a[0].split(' - ')[0]);
+        const bDate = new Date(b[0].split(' - ')[0]);
+        return aDate.getTime() - bDate.getTime();
+      })
+      .map(([label, value]) => ({ label, value }));
   }
 
   initializeCharts(): void {
     const filtered = this.filterByDateRange(this.transactions, this.selectedDateRange);
 
-    
+    // Daily Chart
     const dailyTotals = this.getDailyTotals(filtered);
     const dailyData = this.prepareChartData(
       dailyTotals,
@@ -110,7 +130,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
       });
     }
 
-    
+    // Weekly Chart
     const weeklyTotals = this.getWeeklyTotals(filtered);
     const weeklyData = this.prepareChartData(
       weeklyTotals,
