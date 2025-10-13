@@ -5,7 +5,7 @@ import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { AnalyticsService, WorkTeller } from './analytics.service';
 import transactionsData from '../data/transactions.json';
 
-// Register Chart.js components
+
 Chart.register(...registerables);
 
 @Component({
@@ -69,7 +69,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
     transactions.forEach((t) => {
       const d = new Date(t.date || t.createdAt);
       const day = days[d.getDay()];
-      daily[day] += 1; 
+      daily[day] += t.total;
     });
 
     return Object.entries(daily).map(([label, value]) => ({ label, value }));
@@ -83,7 +83,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
       const day = d.getDate();
       const week = day <= 7 ? 'Week 1' : day <= 14 ? 'Week 2' : day <= 21 ? 'Week 3' : 'Week 4';
 
-      weekly[week] += 1; 
+      weekly[week] += t.total;
     });
 
     return Object.entries(weekly).map(([label, value]) => ({ label, value }));
@@ -96,7 +96,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
     const dailyTotals = this.getDailyTotals(filtered);
     const dailyData = this.prepareChartData(
       dailyTotals,
-      'Daily Transactions',
+      'Daily Amount Sold',
       'rgba(99, 132, 255, 0.85)',
       'rgba(99, 132, 255, 1)'
     );
@@ -106,7 +106,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
       this.dailyChart = new Chart(dailyCanvas, {
         type: 'bar',
         data: dailyData,
-        options: this.getChartOptions('Daily Transactions', dailyTotals),
+        options: this.getChartOptions('Daily Amount Sold (₦)', dailyTotals),
       });
     }
 
@@ -114,7 +114,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
     const weeklyTotals = this.getWeeklyTotals(filtered);
     const weeklyData = this.prepareChartData(
       weeklyTotals,
-      'Weekly Transactions',
+      'Weekly Amount Sold',
       'rgba(99, 132, 255, 0.85)',
       'rgba(99, 132, 255, 1)'
     );
@@ -124,7 +124,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
       this.weeklyChart = new Chart(weeklyCanvas, {
         type: 'bar',
         data: weeklyData,
-        options: this.getChartOptions('Weekly Transactions', weeklyTotals),
+        options: this.getChartOptions('Weekly Amount Sold (₦)', weeklyTotals),
       });
     }
   }
@@ -180,7 +180,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
       datasets: [
         {
           label,
-          data: data.map((d) => d.value), 
+          data: data.map((d) => d.value),
           backgroundColor: bg,
           borderColor: border,
           borderWidth: 0,
@@ -194,8 +194,17 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
     title: string,
     data: { label: string; value: number }[]
   ): ChartConfiguration['options'] {
-    const maxValue = Math.max(...data.map((d) => d.value));
-    const suggestedMax = maxValue > 0 ? Math.ceil(maxValue * 1.2) : 10;
+    const maxValue = Math.max(...data.map((d) => d.value), 0);
+    const suggestedMax = maxValue > 0 ? Math.ceil(maxValue * 1.2) : 100;
+
+    const calculateStepSize = (max: number): number => {
+      if (max <= 100) return 10;
+      if (max <= 1000) return 100;
+      if (max <= 10000) return 1000;
+      if (max <= 100000) return 10000;
+      if (max <= 1000000) return 100000;
+      return Math.ceil(max / 5);
+    };
 
     return {
       responsive: true,
@@ -238,8 +247,15 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
             font: {
               size: 12,
             },
-            stepSize: Math.max(1, Math.ceil(suggestedMax / 5)),
-            precision: 0,
+            callback: (value: any) => {
+              if (value >= 1000000) {
+                return '₦' + (value / 1000000).toFixed(0) + 'M';
+              } else if (value >= 1000) {
+                return '₦' + (value / 1000).toFixed(0) + 'K';
+              }
+              return '₦' + value;
+            },
+            stepSize: calculateStepSize(suggestedMax),
           } as any,
         },
       },
