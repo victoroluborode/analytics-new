@@ -1,0 +1,25 @@
+<!-- analytics.component.html -->
+<div class="analytics-container">
+    <div class="analytics-header">
+        <div class="date-filter">
+            <label for="dateRange">Date Range:</label>
+            <select id="dateRange" [(ngModel)]="selectedDateRange" (change)="onDateRangeChange()" class="date-select">
+                @for (option of dateRangeOptions; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    <div class="charts-container">
+        <div class="chart-wrapper">
+            <h3 class="chart-title">Daily Transactions</h3>
+            <canvas id="dailyChart"></canvas>
+        </div>
+
+        <div class="chart-wrapper">
+            <h3 class="chart-title">Weekly Transactions</h3>
+            <canvas id="weeklyChart"></canvas>
+        </div>
+    </div>
+</div>
