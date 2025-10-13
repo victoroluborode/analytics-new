@@ -92,7 +92,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
   initializeCharts(): void {
     const filtered = this.filterByDateRange(this.transactions, this.selectedDateRange);
 
-    // Daily Chart
+    
     const dailyTotals = this.getDailyTotals(filtered);
     const dailyData = this.prepareChartData(
       dailyTotals,
@@ -110,7 +110,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
       });
     }
 
-    // Weekly Chart
+    
     const weeklyTotals = this.getWeeklyTotals(filtered);
     const weeklyData = this.prepareChartData(
       weeklyTotals,
