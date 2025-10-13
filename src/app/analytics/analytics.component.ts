@@ -5,7 +5,7 @@ import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { AnalyticsService, WorkTeller } from './analytics.service';
 import transactionsData from '../data/transactions.json';
 
-// Register Chart.js components
+
 Chart.register(...registerables);
 
 @Component({
@@ -80,13 +80,13 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
 
     transactions.forEach((t) => {
       const d = new Date(t.date || t.createdAt);
-      // Get the Monday of the week this date falls into
+      
       const date = new Date(d);
       const day = date.getDay();
-      const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+      const diff = date.getDate() - day + (day === 0 ? -6 : 1); 
       const monday = new Date(date.setDate(diff));
 
-      // Format week label as "MMM DD - MMM DD"
+      
       const endDate = new Date(monday);
       endDate.setDate(endDate.getDate() + 6);
 
@@ -112,7 +112,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
   initializeCharts(): void {
     const filtered = this.filterByDateRange(this.transactions, this.selectedDateRange);
 
-    // Daily Chart
+    
     const dailyTotals = this.getDailyTotals(filtered);
     const dailyData = this.prepareChartData(
       dailyTotals,
@@ -130,7 +130,7 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
       });
     }
 
-    // Weekly Chart
+    
     const weeklyTotals = this.getWeeklyTotals(filtered);
     const weeklyData = this.prepareChartData(
       weeklyTotals,
@@ -235,6 +235,19 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
         },
         title: {
           display: false,
+        },
+        tooltip: {
+          callbacks: {
+            label: (context: any) => {
+              const value = context.parsed.y;
+              if (value >= 1000000) {
+                return '₦' + (value / 1000000).toFixed(2) + 'M';
+              } else if (value >= 1000) {
+                return '₦' + (value / 1000).toFixed(2) + 'K';
+              }
+              return '₦' + value.toLocaleString();
+            },
+          },
         },
       },
       scales: {
