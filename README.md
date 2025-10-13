@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Chart.js 4.x
+- Chart.js
 
 ## Installation
 
