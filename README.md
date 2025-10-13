@@ -1,4 +1,4 @@
-# Analytics Component
+# Chart Component
 
 ## Prerequisites
 
