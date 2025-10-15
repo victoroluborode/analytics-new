@@ -8,19 +8,23 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
+    gap: 20px;
     margin-bottom: 30px;
 }
 
-.date-filter {
+.date-filter,
+.chart-type-filter {
     display: flex;
     align-items: center;
     gap: 10px;
 }
 
-.date-filter label {
+.date-filter label,
+.chart-type-filter label {
     font-size: 14px;
     font-weight: 500;
     color: #666;
+    white-space: nowrap;
 }
 
 .date-select {
@@ -75,8 +79,13 @@
 @media (max-width: 768px) {
     .analytics-header {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
         gap: 15px;
+    }
+
+    .date-filter,
+    .chart-type-filter {
+        justify-content: space-between;
     }
 
     .charts-container {

@@ -5,7 +5,6 @@ import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { AnalyticsService, WorkTeller } from './analytics.service';
 import transactionsData from '../data/transactions.json';
 
-
 Chart.register(...registerables);
 
 @Component({
@@ -20,12 +19,19 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
   dailyChart?: Chart;
   weeklyChart?: Chart;
   selectedDateRange = 90;
+  selectedChartType: 'bar' | 'line' | 'doughnut' = 'bar';
 
   dateRangeOptions = [
     { value: 7, label: 'Last 7 Days' },
     { value: 30, label: 'Last 30 Days' },
     { value: 60, label: 'Last 60 Days' },
     { value: 90, label: 'Last 90 Days' },
+  ];
+
+  chartTypeOptions = [
+    { value: 'bar', label: 'Bar Chart' },
+    { value: 'line', label: 'Area Chart' },
+    { value: 'doughnut', label: 'Donut Chart' },
   ];
 
   constructor(private analyticsService: AnalyticsService) {}
@@ -41,6 +47,11 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
 
   onDateRangeChange(): void {
     this.updateCharts();
+  }
+
+  onChartTypeChange(): void {
+    this.destroyCharts();
+    this.initializeCharts();
   }
 
   filterByDateRange(transactions: WorkTeller[], days: number): WorkTeller[] {
@@ -80,13 +91,11 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
 
     transactions.forEach((t) => {
       const d = new Date(t.date || t.createdAt);
-      
       const date = new Date(d);
       const day = date.getDay();
-      const diff = date.getDate() - day + (day === 0 ? -6 : 1); 
+      const diff = date.getDate() - day + (day === 0 ? -6 : 1);
       const monday = new Date(date.setDate(diff));
 
-      
       const endDate = new Date(monday);
       endDate.setDate(endDate.getDate() + 6);
 
@@ -112,37 +121,27 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
   initializeCharts(): void {
     const filtered = this.filterByDateRange(this.transactions, this.selectedDateRange);
 
-    
+    // Daily Chart
     const dailyTotals = this.getDailyTotals(filtered);
-    const dailyData = this.prepareChartData(
-      dailyTotals,
-      'Daily Amount Sold',
-      'rgba(99, 132, 255, 0.85)',
-      'rgba(99, 132, 255, 1)'
-    );
+    const dailyData = this.prepareChartData(dailyTotals, 'Daily Amount Sold');
     const dailyCanvas = document.getElementById('dailyChart') as HTMLCanvasElement;
 
     if (dailyCanvas) {
       this.dailyChart = new Chart(dailyCanvas, {
-        type: 'bar',
+        type: this.selectedChartType,
         data: dailyData,
         options: this.getChartOptions('Daily Amount Sold (₦)', dailyTotals),
       });
     }
 
-    
+  
     const weeklyTotals = this.getWeeklyTotals(filtered);
-    const weeklyData = this.prepareChartData(
-      weeklyTotals,
-      'Weekly Amount Sold',
-      'rgba(99, 132, 255, 0.85)',
-      'rgba(99, 132, 255, 1)'
-    );
+    const weeklyData = this.prepareChartData(weeklyTotals, 'Weekly Amount Sold');
     const weeklyCanvas = document.getElementById('weeklyChart') as HTMLCanvasElement;
 
     if (weeklyCanvas) {
       this.weeklyChart = new Chart(weeklyCanvas, {
-        type: 'bar',
+        type: this.selectedChartType,
         data: weeklyData,
         options: this.getChartOptions('Weekly Amount Sold (₦)', weeklyTotals),
       });
@@ -154,17 +153,17 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
 
     if (this.dailyChart) {
       const data = this.getDailyTotals(filtered);
-      const maxValue = Math.max(...data.map((d) => d.value));
-      const suggestedMax = maxValue > 0 ? Math.ceil(maxValue * 1.2) : 10;
-
       this.dailyChart.data.labels = data.map((d) => d.label);
       this.dailyChart.data.datasets[0].data = data.map((d) => d.value);
 
+      const maxValue = Math.max(...data.map((d) => d.value));
+      const suggestedMax = maxValue > 0 ? Math.ceil(maxValue * 1.2) : 10;
+
       const dailyOptions = this.dailyChart.options as any;
-      if (dailyOptions?.scales?.y) {
+      if (this.selectedChartType !== 'doughnut' && dailyOptions?.scales?.y) {
         dailyOptions.scales.y.suggestedMax = suggestedMax;
         if (dailyOptions.scales.y.ticks) {
-          dailyOptions.scales.y.ticks.stepSize = Math.max(1, Math.ceil(suggestedMax / 5));
+          dailyOptions.scales.y.ticks.stepSize = this.calculateStepSize(suggestedMax);
         }
       }
       this.dailyChart.update();
@@ -172,42 +171,98 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
 
     if (this.weeklyChart) {
       const data = this.getWeeklyTotals(filtered);
-      const maxValue = Math.max(...data.map((d) => d.value));
-      const suggestedMax = maxValue > 0 ? Math.ceil(maxValue * 1.2) : 10;
-
       this.weeklyChart.data.labels = data.map((d) => d.label);
       this.weeklyChart.data.datasets[0].data = data.map((d) => d.value);
 
+      const maxValue = Math.max(...data.map((d) => d.value));
+      const suggestedMax = maxValue > 0 ? Math.ceil(maxValue * 1.2) : 10;
+
       const weeklyOptions = this.weeklyChart.options as any;
-      if (weeklyOptions?.scales?.y) {
+      if (this.selectedChartType !== 'doughnut' && weeklyOptions?.scales?.y) {
         weeklyOptions.scales.y.suggestedMax = suggestedMax;
         if (weeklyOptions.scales.y.ticks) {
-          weeklyOptions.scales.y.ticks.stepSize = Math.max(1, Math.ceil(suggestedMax / 5));
+          weeklyOptions.scales.y.ticks.stepSize = this.calculateStepSize(suggestedMax);
         }
       }
       this.weeklyChart.update();
     }
   }
 
-  prepareChartData(
-    data: { label: string; value: number }[],
-    label: string,
-    bg: string,
-    border: string
-  ) {
-    return {
-      labels: data.map((d) => d.label),
-      datasets: [
-        {
-          label,
-          data: data.map((d) => d.value),
-          backgroundColor: bg,
-          borderColor: border,
-          borderWidth: 0,
-          borderRadius: 4,
-        },
-      ],
-    };
+  prepareChartData(data: { label: string; value: number }[], label: string) {
+    const colors = [
+      'rgba(99, 132, 255, 0.85)',
+      'rgba(255, 99, 132, 0.85)',
+      'rgba(75, 192, 75, 0.85)',
+      'rgba(255, 206, 86, 0.85)',
+      'rgba(153, 102, 255, 0.85)',
+      'rgba(255, 159, 64, 0.85)',
+      'rgba(54, 162, 235, 0.85)',
+      'rgba(255, 120, 180, 0.85)',
+      'rgba(0, 200, 150, 0.85)',
+      'rgba(255, 180, 100, 0.85)',
+    ];
+
+    const borderColors = [
+      'rgba(99, 132, 255, 1)',
+      'rgba(255, 99, 132, 1)',
+      'rgba(75, 192, 75, 1)',
+      'rgba(255, 206, 86, 1)',
+      'rgba(153, 102, 255, 1)',
+      'rgba(255, 159, 64, 1)',
+      'rgba(54, 162, 235, 1)',
+      'rgba(255, 120, 180, 1)',
+      'rgba(0, 200, 150, 1)',
+      'rgba(255, 180, 100, 1)',
+    ];
+
+    if (this.selectedChartType === 'doughnut') {
+      return {
+        labels: data.map((d) => d.label),
+        datasets: [
+          {
+            label,
+            data: data.map((d) => d.value),
+            backgroundColor: colors.map((c, i) => colors[i % colors.length]),
+            borderColor: '#fff',
+            borderWidth: 3,
+            hoverOffset: 15,
+          },
+        ],
+      };
+    } else if (this.selectedChartType === 'line') {
+      return {
+        labels: data.map((d) => d.label),
+        datasets: [
+          {
+            label,
+            data: data.map((d) => d.value),
+            borderColor: 'rgba(99, 132, 255, 1)',
+            backgroundColor: 'rgba(99, 132, 255, 0.1)',
+            fill: true,
+            tension: 0.4,
+            borderWidth: 2,
+            pointBackgroundColor: 'rgba(99, 132, 255, 1)',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: 5,
+          },
+        ],
+      };
+    } else {
+      return {
+        labels: data.map((d) => d.label),
+        datasets: [
+          {
+            label,
+            data: data.map((d) => d.value),
+            backgroundColor: 'rgba(99, 132, 255, 0.85)',
+            borderColor: 'rgba(99, 132, 255, 1)',
+            borderWidth: 0,
+            borderRadius: 4,
+          },
+        ],
+      };
+    }
   }
 
   getChartOptions(
@@ -217,14 +272,59 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
     const maxValue = Math.max(...data.map((d) => d.value), 0);
     const suggestedMax = maxValue > 0 ? Math.ceil(maxValue * 1.2) : 100;
 
-    const calculateStepSize = (max: number): number => {
-      if (max <= 100) return 10;
-      if (max <= 1000) return 100;
-      if (max <= 10000) return 1000;
-      if (max <= 100000) return 10000;
-      if (max <= 1000000) return 100000;
-      return Math.ceil(max / 5);
-    };
+    if (this.selectedChartType === 'doughnut') {
+      return {
+        responsive: true,
+        maintainAspectRatio: true,
+        aspectRatio: 1.8,
+        cutout: '65%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              padding: 15,
+              usePointStyle: true,
+              pointStyle: 'circle',
+              font: {
+                size: 11,
+                family: "'Inter', 'Segoe UI', sans-serif",
+              },
+              color: '#333',
+            },
+          },
+          tooltip: {
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            padding: 12,
+            titleFont: {
+              size: 13,
+              weight: 'bold',
+            },
+            bodyFont: {
+              size: 13,
+            },
+            cornerRadius: 6,
+            callbacks: {
+              label: (context: any) => {
+                const value = context.parsed;
+                const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+                const percentage = ((value / total) * 100).toFixed(1);
+                let formattedValue = '';
+
+                if (value >= 1000000) {
+                  formattedValue = '₦' + (value / 1000000).toFixed(2) + 'M';
+                } else if (value >= 1000) {
+                  formattedValue = '₦' + (value / 1000).toFixed(2) + 'K';
+                } else {
+                  formattedValue = '₦' + value.toLocaleString();
+                }
+
+                return `${context.label}: ${formattedValue} (${percentage}%)`;
+              },
+            },
+          },
+        },
+      } as any;
+    }
 
     return {
       responsive: true,
@@ -288,15 +388,28 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
               }
               return '₦' + value;
             },
-            stepSize: calculateStepSize(suggestedMax),
+            stepSize: this.calculateStepSize(suggestedMax),
           } as any,
         },
       },
     };
   }
 
-  ngOnDestroy(): void {
+  calculateStepSize(max: number): number {
+    if (max <= 100) return 10;
+    if (max <= 1000) return 100;
+    if (max <= 10000) return 1000;
+    if (max <= 100000) return 10000;
+    if (max <= 1000000) return 100000;
+    return Math.ceil(max / 5);
+  }
+
+  destroyCharts(): void {
     this.dailyChart?.destroy();
     this.weeklyChart?.destroy();
+  }
+
+  ngOnDestroy(): void {
+    this.destroyCharts();
   }
 }
