@@ -1,33 +1,36 @@
-<div class="analytics-container">
-    <div class="analytics-header">
-        <div class="date-filter">
-            <label for="dateRange">Date Range:</label>
-            <select id="dateRange" [(ngModel)]="selectedDateRange" (change)="onDateRangeChange()" class="date-select">
-                @for (option of dateRangeOptions; track option.value) {
-                <option [value]="option.value">{{ option.label }}</option>
-                }
-            </select>
+<div class="dashboard-bg">
+    <div class="analytics-container">
+        <div class="top-filters">
+            <div class="filter-row">
+                <div class="filter">
+                    <label>Date Range</label>
+                    <select [(ngModel)]="selectedDateRange" (change)="onFilterChange()">
+                        @for (option of dateRangeOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                        }
+                    </select>
+                </div>
+                <div class="filter">
+                    <label>Chart Type</label>
+                    <select [(ngModel)]="selectedChartType" (change)="onChartTypeChange()"
+                        [disabled]="selectedMetric !== 'sales'">
+                        @for (option of chartTypeOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                        }
+                    </select>
+                </div>
+                <div class="filter">
+                    <label>Metric</label>
+                    <select [(ngModel)]="selectedMetric" (change)="onFilterChange()">
+                        @for (option of metricOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                        }
+                    </select>
+                </div>
+            </div>
         </div>
-
-        <div class="chart-type-filter">
-            <label for="chartType">Chart Type:</label>
-            <select id="chartType" [(ngModel)]="selectedChartType" (change)="onChartTypeChange()" class="date-select">
-                @for (option of chartTypeOptions; track option.value) {
-                <option [value]="option.value">{{ option.label }}</option>
-                }
-            </select>
-        </div>
-    </div>
-
-    <div class="charts-container">
-        <div class="chart-wrapper">
-            <h3 class="chart-title">Daily Amount Sold</h3>
-            <canvas id="dailyChart"></canvas>
-        </div>
-
-        <div class="chart-wrapper">
-            <h3 class="chart-title">Weekly Amount Sold</h3>
-            <canvas id="weeklyChart"></canvas>
+        <div class="chart-main">
+            <div echarts [options]="chartOption" class="main-chart"></div>
         </div>
     </div>
 </div>

@@ -1,415 +1,758 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { AnalyticsService, WorkTeller } from './analytics.service';
+import { EChartsOption } from 'echarts';
 import transactionsData from '../data/transactions.json';
-
-Chart.register(...registerables);
+import { NgxEchartsModule } from 'ngx-echarts';
 
 @Component({
   selector: 'app-analytics',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, NgxEchartsModule],
   templateUrl: './analytics.component.html',
   styleUrls: ['./analytics.component.css'],
 })
-export class AnalyticsComponent implements OnInit, OnDestroy {
+export class AnalyticsComponent implements OnInit {
   transactions: WorkTeller[] = [];
-  dailyChart?: Chart;
-  weeklyChart?: Chart;
-  selectedDateRange = 90;
-  selectedChartType: 'bar' | 'line' | 'doughnut' = 'bar';
+  chartOption: EChartsOption = {};
 
   dateRangeOptions = [
-    { value: 7, label: 'Last 7 Days' },
-    { value: 30, label: 'Last 30 Days' },
-    { value: 60, label: 'Last 60 Days' },
-    { value: 90, label: 'Last 90 Days' },
+    { value: 'today', label: 'Today' },
+    { value: 'yesterday', label: 'Yesterday' },
+    { value: 'thisWeek', label: 'This Week' },
+    { value: 'lastWeek', label: 'Last Week' },
+    { value: 'last7Days', label: 'Last 7 Days' },
+    { value: 'last14Days', label: 'Last 14 Days' },
+    { value: 'last30Days', label: 'Last 30 Days' },
+    { value: 'last60Days', label: 'Last 60 Days' },
+    { value: 'last90Days', label: 'Last 90 Days' },
+    { value: 'last2Months', label: 'Last 2 Months' },
+    { value: 'thisMonth', label: 'This Month' },
+    { value: 'lastMonth', label: 'Last Month' },
+    { value: 'thisQuarter', label: 'This Quarter' },
+    { value: 'lastQuarter', label: 'Last Quarter' },
+    { value: 'thisYear', label: 'This Year' },
+    { value: 'lastYear', label: 'Last Year' },
+    { value: 'allTime', label: 'All Time' },
   ];
 
   chartTypeOptions = [
     { value: 'bar', label: 'Bar Chart' },
     { value: 'line', label: 'Area Chart' },
-    { value: 'doughnut', label: 'Donut Chart' },
+    { value: 'pie', label: 'Donut Chart' },
   ];
 
-  constructor(private analyticsService: AnalyticsService) {}
+  metricOptions = [
+    { value: 'sales', label: 'Sales Revenue' },
+    { value: 'growth', label: 'Sales Growth %' },
+    { value: 'forecast', label: 'Sales Forecast' },
+  ];
+
+  selectedDateRange: string = 'last7Days';
+  selectedChartType: 'bar' | 'line' | 'pie' = 'bar';
+  selectedMetric: 'sales' | 'growth' | 'forecast' = 'sales';
+
+  constructor(private analyticsService: AnalyticsService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadTransactions();
   }
 
   loadTransactions(): void {
-    this.transactions = transactionsData.data.data;
-    this.initializeCharts();
+    this.transactions = transactionsData.data.data as unknown as WorkTeller[];
+    this.updateChart();
   }
 
-  onDateRangeChange(): void {
-    this.updateCharts();
+  onFilterChange(): void {
+    this.updateChart();
+    this.cdr.detectChanges();
   }
 
   onChartTypeChange(): void {
-    this.destroyCharts();
-    this.initializeCharts();
+    this.updateChart();
   }
 
-  filterByDateRange(transactions: WorkTeller[], days: number): WorkTeller[] {
-    const now = new Date();
-    const start = new Date();
-    start.setDate(now.getDate() - days);
-    return transactions.filter((t) => {
-      const d = new Date(t.date || t.createdAt);
-      return d >= start && d <= now;
-    });
-  }
-
-  getDailyTotals(transactions: WorkTeller[]): { label: string; value: number }[] {
-    const daily: { [key: string]: number } = {
-      Mon: 0,
-      Tue: 0,
-      Wed: 0,
-      Thu: 0,
-      Fri: 0,
-      Sat: 0,
-      Sun: 0,
-    };
-
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    transactions.forEach((t) => {
-      const d = new Date(t.date || t.createdAt);
-      const day = days[d.getDay()];
-      daily[day] += t.total;
-    });
-
-    return Object.entries(daily).map(([label, value]) => ({ label, value }));
-  }
-
-  getWeeklyTotals(transactions: WorkTeller[]): { label: string; value: number }[] {
-    const weekly: { [key: string]: number } = {};
-
-    transactions.forEach((t) => {
-      const d = new Date(t.date || t.createdAt);
-      const date = new Date(d);
-      const day = date.getDay();
-      const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-      const monday = new Date(date.setDate(diff));
-
-      const endDate = new Date(monday);
-      endDate.setDate(endDate.getDate() + 6);
-
-      const startFormatted = monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const endFormatted = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const weekLabel = `${startFormatted} - ${endFormatted}`;
-
-      if (!weekly[weekLabel]) {
-        weekly[weekLabel] = 0;
-      }
-      weekly[weekLabel] += t.total;
-    });
-
-    return Object.entries(weekly)
-      .sort((a, b) => {
-        const aDate = new Date(a[0].split(' - ')[0]);
-        const bDate = new Date(b[0].split(' - ')[0]);
-        return aDate.getTime() - bDate.getTime();
-      })
-      .map(([label, value]) => ({ label, value }));
-  }
-
-  initializeCharts(): void {
-    const filtered = this.filterByDateRange(this.transactions, this.selectedDateRange);
-
-    // Daily Chart
-    const dailyTotals = this.getDailyTotals(filtered);
-    const dailyData = this.prepareChartData(dailyTotals, 'Daily Amount Sold');
-    const dailyCanvas = document.getElementById('dailyChart') as HTMLCanvasElement;
-
-    if (dailyCanvas) {
-      this.dailyChart = new Chart(dailyCanvas, {
-        type: this.selectedChartType,
-        data: dailyData,
-        options: this.getChartOptions('Daily Amount Sold (₦)', dailyTotals),
-      });
+  trimZeroEdges(arr: number[], labels: string[]): { data: number[]; labels: string[] } {
+    let start = arr.findIndex((v) => v !== 0);
+    let end = arr.length - 1 - [...arr].reverse().findIndex((v) => v !== 0);
+    if (start === -1 || end < start) {
+      return { data: arr, labels };
     }
-
-  
-    const weeklyTotals = this.getWeeklyTotals(filtered);
-    const weeklyData = this.prepareChartData(weeklyTotals, 'Weekly Amount Sold');
-    const weeklyCanvas = document.getElementById('weeklyChart') as HTMLCanvasElement;
-
-    if (weeklyCanvas) {
-      this.weeklyChart = new Chart(weeklyCanvas, {
-        type: this.selectedChartType,
-        data: weeklyData,
-        options: this.getChartOptions('Weekly Amount Sold (₦)', weeklyTotals),
-      });
-    }
-  }
-
-  updateCharts(): void {
-    const filtered = this.filterByDateRange(this.transactions, this.selectedDateRange);
-
-    if (this.dailyChart) {
-      const data = this.getDailyTotals(filtered);
-      this.dailyChart.data.labels = data.map((d) => d.label);
-      this.dailyChart.data.datasets[0].data = data.map((d) => d.value);
-
-      const maxValue = Math.max(...data.map((d) => d.value));
-      const suggestedMax = maxValue > 0 ? Math.ceil(maxValue * 1.2) : 10;
-
-      const dailyOptions = this.dailyChart.options as any;
-      if (this.selectedChartType !== 'doughnut' && dailyOptions?.scales?.y) {
-        dailyOptions.scales.y.suggestedMax = suggestedMax;
-        if (dailyOptions.scales.y.ticks) {
-          dailyOptions.scales.y.ticks.stepSize = this.calculateStepSize(suggestedMax);
-        }
-      }
-      this.dailyChart.update();
-    }
-
-    if (this.weeklyChart) {
-      const data = this.getWeeklyTotals(filtered);
-      this.weeklyChart.data.labels = data.map((d) => d.label);
-      this.weeklyChart.data.datasets[0].data = data.map((d) => d.value);
-
-      const maxValue = Math.max(...data.map((d) => d.value));
-      const suggestedMax = maxValue > 0 ? Math.ceil(maxValue * 1.2) : 10;
-
-      const weeklyOptions = this.weeklyChart.options as any;
-      if (this.selectedChartType !== 'doughnut' && weeklyOptions?.scales?.y) {
-        weeklyOptions.scales.y.suggestedMax = suggestedMax;
-        if (weeklyOptions.scales.y.ticks) {
-          weeklyOptions.scales.y.ticks.stepSize = this.calculateStepSize(suggestedMax);
-        }
-      }
-      this.weeklyChart.update();
-    }
-  }
-
-  prepareChartData(data: { label: string; value: number }[], label: string) {
-    const colors = [
-      'rgba(99, 132, 255, 0.85)',
-      'rgba(255, 99, 132, 0.85)',
-      'rgba(75, 192, 75, 0.85)',
-      'rgba(255, 206, 86, 0.85)',
-      'rgba(153, 102, 255, 0.85)',
-      'rgba(255, 159, 64, 0.85)',
-      'rgba(54, 162, 235, 0.85)',
-      'rgba(255, 120, 180, 0.85)',
-      'rgba(0, 200, 150, 0.85)',
-      'rgba(255, 180, 100, 0.85)',
-    ];
-
-    const borderColors = [
-      'rgba(99, 132, 255, 1)',
-      'rgba(255, 99, 132, 1)',
-      'rgba(75, 192, 75, 1)',
-      'rgba(255, 206, 86, 1)',
-      'rgba(153, 102, 255, 1)',
-      'rgba(255, 159, 64, 1)',
-      'rgba(54, 162, 235, 1)',
-      'rgba(255, 120, 180, 1)',
-      'rgba(0, 200, 150, 1)',
-      'rgba(255, 180, 100, 1)',
-    ];
-
-    if (this.selectedChartType === 'doughnut') {
-      return {
-        labels: data.map((d) => d.label),
-        datasets: [
-          {
-            label,
-            data: data.map((d) => d.value),
-            backgroundColor: colors.map((c, i) => colors[i % colors.length]),
-            borderColor: '#fff',
-            borderWidth: 3,
-            hoverOffset: 15,
-          },
-        ],
-      };
-    } else if (this.selectedChartType === 'line') {
-      return {
-        labels: data.map((d) => d.label),
-        datasets: [
-          {
-            label,
-            data: data.map((d) => d.value),
-            borderColor: 'rgba(99, 132, 255, 1)',
-            backgroundColor: 'rgba(99, 132, 255, 0.1)',
-            fill: true,
-            tension: 0.4,
-            borderWidth: 2,
-            pointBackgroundColor: 'rgba(99, 132, 255, 1)',
-            pointBorderColor: '#fff',
-            pointBorderWidth: 2,
-            pointRadius: 5,
-          },
-        ],
-      };
-    } else {
-      return {
-        labels: data.map((d) => d.label),
-        datasets: [
-          {
-            label,
-            data: data.map((d) => d.value),
-            backgroundColor: 'rgba(99, 132, 255, 0.85)',
-            borderColor: 'rgba(99, 132, 255, 1)',
-            borderWidth: 0,
-            borderRadius: 4,
-          },
-        ],
-      };
-    }
-  }
-
-  getChartOptions(
-    title: string,
-    data: { label: string; value: number }[]
-  ): ChartConfiguration['options'] {
-    const maxValue = Math.max(...data.map((d) => d.value), 0);
-    const suggestedMax = maxValue > 0 ? Math.ceil(maxValue * 1.2) : 100;
-
-    if (this.selectedChartType === 'doughnut') {
-      return {
-        responsive: true,
-        maintainAspectRatio: true,
-        aspectRatio: 1.8,
-        cutout: '65%',
-        plugins: {
-          legend: {
-            position: 'bottom',
-            labels: {
-              padding: 15,
-              usePointStyle: true,
-              pointStyle: 'circle',
-              font: {
-                size: 11,
-                family: "'Inter', 'Segoe UI', sans-serif",
-              },
-              color: '#333',
-            },
-          },
-          tooltip: {
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            padding: 12,
-            titleFont: {
-              size: 13,
-              weight: 'bold',
-            },
-            bodyFont: {
-              size: 13,
-            },
-            cornerRadius: 6,
-            callbacks: {
-              label: (context: any) => {
-                const value = context.parsed;
-                const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
-                const percentage = ((value / total) * 100).toFixed(1);
-                let formattedValue = '';
-
-                if (value >= 1000000) {
-                  formattedValue = '₦' + (value / 1000000).toFixed(2) + 'M';
-                } else if (value >= 1000) {
-                  formattedValue = '₦' + (value / 1000).toFixed(2) + 'K';
-                } else {
-                  formattedValue = '₦' + value.toLocaleString();
-                }
-
-                return `${context.label}: ${formattedValue} (${percentage}%)`;
-              },
-            },
-          },
-        },
-      } as any;
-    }
-
     return {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: false,
-        },
-        title: {
-          display: false,
-        },
-        tooltip: {
-          callbacks: {
-            label: (context: any) => {
-              const value = context.parsed.y;
-              if (value >= 1000000) {
-                return '₦' + (value / 1000000).toFixed(2) + 'M';
-              } else if (value >= 1000) {
-                return '₦' + (value / 1000).toFixed(2) + 'K';
-              }
-              return '₦' + value.toLocaleString();
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          grid: {
-            display: false,
-          },
-          border: {
-            display: false,
-          },
-          ticks: {
-            color: '#666',
-            font: {
-              size: 12,
-            },
-          },
-        },
-        y: {
-          beginAtZero: true,
-          suggestedMax: suggestedMax,
-          grid: {
-            display: true,
-            color: 'rgba(0, 0, 0, 0.05)',
-          },
-          border: {
-            display: false,
-          },
-          ticks: {
-            color: '#666',
-            font: {
-              size: 12,
-            },
-            callback: (value: any) => {
-              if (value >= 1000000) {
-                return '₦' + (value / 1000000).toFixed(0) + 'M';
-              } else if (value >= 1000) {
-                return '₦' + (value / 1000).toFixed(0) + 'K';
-              }
-              return '₦' + value;
-            },
-            stepSize: this.calculateStepSize(suggestedMax),
-          } as any,
-        },
-      },
+      data: arr.slice(start, end + 1),
+      labels: labels.slice(start, end + 1),
     };
   }
 
-  calculateStepSize(max: number): number {
-    if (max <= 100) return 10;
-    if (max <= 1000) return 100;
-    if (max <= 10000) return 1000;
-    if (max <= 100000) return 10000;
-    if (max <= 1000000) return 100000;
-    return Math.ceil(max / 5);
+  updateChart(): void {
+    const now = new Date();
+    const { labels, totals, lastActualDate } = this.prepareChartSeries(
+      this.selectedDateRange,
+      this.transactions
+    );
+
+    let lastActualIndex = labels.length - 1;
+
+    if (this.selectedDateRange === 'today') {
+      lastActualIndex = now.getHours();
+    } else if (this.selectedDateRange === 'yesterday') {
+      lastActualIndex = 23;
+    } else if (this.selectedDateRange === 'thisMonth') {
+      lastActualIndex = now.getDate() - 1;
+    } else if (this.selectedDateRange === 'lastMonth') {
+      lastActualIndex = labels.length - 1;
+    } else if (this.selectedDateRange === 'thisYear') {
+      lastActualIndex = now.getMonth();
+    } else if (this.selectedDateRange === 'thisWeek') {
+      lastActualIndex = now.getDay();
+    } else if (this.selectedDateRange === 'lastWeek') {
+      lastActualIndex = 6;
+    } else if (this.selectedDateRange === 'thisQuarter') {
+      const quarter = Math.floor(now.getMonth() / 3);
+      const monthIntoQuarter = now.getMonth() - quarter * 3;
+      lastActualIndex = monthIntoQuarter;
+    } else if (this.selectedDateRange === 'lastQuarter') {
+      lastActualIndex = 2;
+    } else if (['last60Days', 'last90Days', 'last2Months'].includes(this.selectedDateRange)) {
+      lastActualIndex = -1;
+
+      for (let i = labels.length - 1; i >= 0; i--) {
+        const parts = labels[i].split('-');
+        if (parts.length === 2) {
+          const endDateStr = parts[1].trim();
+          const year = now.getFullYear();
+          const testDate = new Date(`${endDateStr} ${year}`);
+
+          if (!isNaN(testDate.getTime())) {
+            testDate.setHours(23, 59, 59, 999);
+            if (testDate < now) {
+              lastActualIndex = i;
+              break;
+            }
+          }
+        }
+      }
+
+      if (lastActualIndex === -1) {
+        lastActualIndex = -1;
+      }
+    }
+
+    if (this.selectedMetric === 'forecast') {
+      const actualLabels = labels.slice(0, lastActualIndex + 1);
+      const actualTotals = totals.slice(0, lastActualIndex + 1);
+      const forecastPeriods = 7;
+      let forecastLabels: string[] = [];
+
+      let useTrimmedRegression = ['thisYear', 'allTime'].includes(this.selectedDateRange);
+
+      if (this.selectedDateRange === 'lastYear') {
+        let forecastStart = new Date(now.getFullYear(), 0, 1);
+        forecastLabels = Array.from({ length: forecastPeriods }, (_, i) => {
+          let m = new Date(forecastStart);
+          m.setMonth(forecastStart.getMonth() + i);
+          return m.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+        });
+      } else if (this.selectedDateRange === 'allTime') {
+        if (labels.length > 0) {
+          let lastLabel = labels[labels.length - 1];
+          let [monthStr, yearStr] = lastLabel.replace(',', '').split(' ');
+          let monthIndex = new Date(Date.parse(monthStr + ' 1, 2000')).getMonth();
+          let forecastStart = new Date(parseInt(yearStr), monthIndex + 1, 1);
+          forecastLabels = Array.from({ length: forecastPeriods }, (_, i) => {
+            let m = new Date(forecastStart);
+            m.setMonth(forecastStart.getMonth() + i);
+            return m.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+          });
+        } else {
+          forecastLabels = [];
+        }
+      } else if (this.selectedDateRange === 'today' || this.selectedDateRange === 'yesterday') {
+        let startHour = lastActualIndex + 1;
+        forecastLabels = Array.from({ length: forecastPeriods }, (_, i) => {
+          let hour = (startHour + i) % 24;
+          return hour.toString().padStart(2, '0') + ':00';
+        });
+        useTrimmedRegression = false;
+      } else if (
+        ['last7Days', 'last14Days', 'last30Days', 'thisMonth', 'lastMonth'].includes(
+          this.selectedDateRange
+        )
+      ) {
+        let base: Date;
+        if (this.selectedDateRange === 'thisMonth') {
+          base = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        } else if (this.selectedDateRange === 'lastMonth') {
+          const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const daysInLastMonth = new Date(
+            prevMonth.getFullYear(),
+            prevMonth.getMonth() + 1,
+            0
+          ).getDate();
+          base = new Date(prevMonth.getFullYear(), prevMonth.getMonth(), daysInLastMonth);
+        } else if (lastActualDate) {
+          base = new Date(lastActualDate);
+        } else {
+          base = new Date(now);
+        }
+
+        base.setDate(base.getDate() + 1);
+        forecastLabels = Array.from({ length: forecastPeriods }, (_, i) => {
+          const d = new Date(base);
+          d.setDate(base.getDate() + i);
+          return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        });
+        useTrimmedRegression = false;
+      } else if (['thisWeek', 'lastWeek'].includes(this.selectedDateRange)) {
+        let base = new Date(now);
+        if (this.selectedDateRange === 'lastWeek') {
+          let weekStart = new Date(now);
+          weekStart.setDate(weekStart.getDate() - weekStart.getDay() - 7 + 7);
+          base = weekStart;
+        } else {
+          let weekStart = new Date(now);
+          weekStart.setDate(now.getDate() - now.getDay());
+          base = weekStart;
+          base.setDate(weekStart.getDate() + lastActualIndex + 1);
+        }
+        forecastLabels = Array.from({ length: forecastPeriods }, (_, i) => {
+          const d = new Date(base);
+          d.setDate(base.getDate() + i);
+          return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
+        });
+        useTrimmedRegression = false;
+      } else if (['last60Days', 'last90Days', 'last2Months'].includes(this.selectedDateRange)) {
+        let forecastStartIndex = lastActualIndex + 1;
+
+        if (forecastStartIndex < labels.length) {
+          forecastLabels = labels.slice(forecastStartIndex, forecastStartIndex + forecastPeriods);
+
+          if (forecastLabels.length < forecastPeriods) {
+            const lastLabel = labels[labels.length - 1];
+            const parts = lastLabel.split('-');
+            if (parts.length === 2) {
+              const endDateStr = parts[1].trim();
+              const year = now.getFullYear();
+              let lastWeekEnd = new Date(`${endDateStr} ${year}`);
+
+              const remaining = forecastPeriods - forecastLabels.length;
+              for (let i = 1; i <= remaining; i++) {
+                const weekStart = new Date(lastWeekEnd);
+                weekStart.setDate(lastWeekEnd.getDate() + 1);
+                const weekEnd = new Date(weekStart);
+                weekEnd.setDate(weekStart.getDate() + 6);
+
+                forecastLabels.push(
+                  `${weekStart.toLocaleDateString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                  })} - ${weekEnd.toLocaleDateString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                  })}`
+                );
+
+                lastWeekEnd = weekEnd;
+              }
+            }
+          }
+        }
+        useTrimmedRegression = false;
+      } else if (['thisQuarter', 'lastQuarter'].includes(this.selectedDateRange)) {
+        if (actualLabels.length > 0) {
+          let lastLabel = actualLabels[actualLabels.length - 1];
+          let [monthStr, yearStr] = lastLabel.replace(',', '').split(' ');
+          let monthIndex = new Date(Date.parse(monthStr + ' 1, 2000')).getMonth();
+          let forecastStart = new Date(parseInt(yearStr), monthIndex + 1, 1);
+          forecastLabels = Array.from({ length: forecastPeriods }, (_, i) => {
+            let m = new Date(forecastStart);
+            m.setMonth(forecastStart.getMonth() + i);
+            return m.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+          });
+        } else {
+          forecastLabels = [];
+        }
+        useTrimmedRegression = false;
+      } else if (this.selectedDateRange === 'thisYear') {
+        let base = new Date(now.getFullYear(), lastActualIndex + 1, 1);
+        forecastLabels = Array.from({ length: forecastPeriods }, (_, i) => {
+          const m = new Date(base);
+          m.setMonth(base.getMonth() + i);
+          return m.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+        });
+      } else {
+        forecastLabels = Array.from({ length: forecastPeriods }, (_, i) => `Period ${i + 1}`);
+        useTrimmedRegression = false;
+      }
+
+      let forecast: number[] = [];
+      let actualLabelsToUse = actualLabels;
+      if (useTrimmedRegression) {
+        let trimmed = this.trimZeroEdges(actualTotals, actualLabels);
+        forecast = this.calculateForecast(trimmed.data, forecastPeriods);
+        actualLabelsToUse = trimmed.labels;
+      } else {
+        forecast = this.calculateForecast(actualTotals, forecastPeriods);
+      }
+
+      const combinedLabels = [...actualLabelsToUse, ...forecastLabels];
+
+      this.chartOption = {
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params: any) => {
+            if (!Array.isArray(params)) return '';
+            let result = params[0].axisValueLabel + '<br/>';
+            params.forEach((param: any) => {
+              if (param.value != null) {
+                result += `${param.marker} ${param.seriesName}: ₦${Number(
+                  param.value
+                ).toLocaleString()}<br/>`;
+              }
+            });
+            return result;
+          },
+        },
+        legend: { data: ['Actual', 'Forecast'], bottom: 10 },
+        grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+        xAxis: {
+          type: 'category',
+          data: combinedLabels,
+          axisLabel: { color: '#666', rotate: 45, interval: 0, fontSize: 11 },
+        },
+        yAxis: {
+          type: 'value',
+          axisLabel: {
+            color: '#666',
+            formatter: (value: number) =>
+              `₦${
+                value >= 1000000
+                  ? (value / 1000000).toFixed(1) + 'M'
+                  : value >= 1000
+                  ? (value / 1000).toFixed(0) + 'K'
+                  : value
+              }`,
+          },
+        },
+        series: [
+          {
+            name: 'Actual',
+            type: 'line',
+            data: [
+              ...actualTotals.slice(actualTotals.length - actualLabelsToUse.length),
+              ...Array(forecast.length).fill(null),
+            ],
+            smooth: true,
+            itemStyle: { color: '#6384ff' },
+            lineStyle: { width: 3 },
+          },
+          {
+            name: 'Forecast',
+            type: 'line',
+            data: [...Array(actualLabelsToUse.length).fill(null), ...forecast],
+            smooth: true,
+            itemStyle: { color: '#f59e0b' },
+            lineStyle: { width: 3, type: 'dashed' },
+          },
+        ],
+      };
+      return;
+    }
+
+    if (this.selectedMetric === 'sales') {
+      if (this.selectedChartType === 'pie') {
+        this.chartOption = {
+          tooltip: {
+            trigger: 'item',
+            formatter: (params: any) =>
+              `${params.name}: ₦${params.value.toLocaleString()} (${params.percent}%)`,
+          },
+          legend: { orient: 'horizontal', bottom: 10, data: labels },
+          series: [
+            {
+              type: 'pie',
+              radius: ['50%', '75%'],
+              avoidLabelOverlap: false,
+              label: { show: false, position: 'center' },
+              emphasis: { label: { show: true, fontSize: 18, fontWeight: 'bold' } },
+              data: labels.map((l, i) => ({ value: totals[i], name: l })),
+            },
+          ],
+        };
+      } else {
+        this.chartOption = {
+          tooltip: {
+            trigger: 'axis',
+            formatter: (params: any) => {
+              const value = Array.isArray(params) ? params[0].value : params.value;
+              return '₦' + Number(value).toLocaleString();
+            },
+          },
+          legend: { data: ['Sales'], bottom: 10 },
+          grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+          xAxis: {
+            type: 'category',
+            data: labels,
+            axisLabel: { color: '#666', rotate: 45, interval: 0, fontSize: 11 },
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: {
+              color: '#666',
+              formatter: (value: number) =>
+                `₦${
+                  value >= 1000000
+                    ? (value / 1000000).toFixed(1) + 'M'
+                    : value >= 1000
+                    ? (value / 1000).toFixed(0) + 'K'
+                    : value
+                }`,
+            },
+          },
+          series: [
+            {
+              name: 'Sales',
+              type: this.selectedChartType,
+              data: totals,
+              smooth: this.selectedChartType === 'line',
+              itemStyle: { color: '#6384ff' },
+              areaStyle: this.selectedChartType === 'line' ? {} : undefined,
+              barWidth: this.selectedChartType === 'bar' ? '60%' : undefined,
+            },
+          ],
+        };
+      }
+    } else if (this.selectedMetric === 'growth') {
+      const actualLabels = labels.slice(0, lastActualIndex + 1);
+      const actualTotals = totals.slice(0, lastActualIndex + 1);
+      const growth = this.calculateGrowth(actualTotals);
+
+      this.chartOption = {
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params: any) => {
+            const value = Array.isArray(params) ? params[0].value : params.value;
+            return value != null ? `${value > 0 ? '+' : ''}${value}%` : 'N/A';
+          },
+        },
+        legend: { data: ['Sales Growth'], bottom: 10 },
+        grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+        xAxis: {
+          type: 'category',
+          data: actualLabels,
+          axisLabel: { color: '#666', rotate: 45, interval: 0, fontSize: 11 },
+        },
+        yAxis: {
+          type: 'value',
+          axisLabel: {
+            color: '#666',
+            formatter: (value: number) => (value > 0 ? '+' : '') + value + '%',
+          },
+        },
+        series: [
+          {
+            name: 'Sales Growth',
+            type: 'bar',
+            data: growth,
+            itemStyle: {
+              color: (params: any) =>
+                params.data == null ? '#cccccc' : params.data < 0 ? '#f43f3b' : '#398ecd',
+            },
+            barWidth: '60%',
+          },
+        ],
+      };
+    }
   }
 
-  destroyCharts(): void {
-    this.dailyChart?.destroy();
-    this.weeklyChart?.destroy();
+  calculateForecast(totals: number[], periods: number = 7): number[] {
+    const n = totals.length;
+    if (n < 2) return Array(periods).fill(totals[0] || 0);
+
+    let sumX = 0,
+      sumY = 0,
+      sumXY = 0,
+      sumX2 = 0;
+    for (let i = 0; i < n; i++) {
+      sumX += i;
+      sumY += totals[i];
+      sumXY += i * totals[i];
+      sumX2 += i * i;
+    }
+    const m = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const b = (sumY - m * sumX) / n;
+
+    const forecast: number[] = [];
+    for (let i = 0; i < periods; i++) {
+      const predictedValue = m * (n + i) + b;
+      forecast.push(Math.max(0, Math.round(predictedValue)));
+    }
+    return forecast;
   }
 
-  ngOnDestroy(): void {
-    this.destroyCharts();
+  prepareChartSeries(
+    range: string,
+    txns: WorkTeller[]
+  ): { labels: string[]; totals: number[]; lastActualDate: Date | null } {
+    const now = new Date();
+    let labels: string[] = [];
+    let totals: number[] = [];
+    let lastActualDate: Date | null = null;
+
+    if (range === 'today' || range === 'yesterday') {
+      labels = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0') + ':00');
+      totals = Array(24).fill(0);
+      const refDate = new Date(now);
+      if (range === 'yesterday') refDate.setDate(now.getDate() - 1);
+      txns.forEach((t) => {
+        const d = new Date(t.date || t.createdAt);
+        if (
+          d.getDate() === refDate.getDate() &&
+          d.getMonth() === refDate.getMonth() &&
+          d.getFullYear() === refDate.getFullYear()
+        ) {
+          totals[d.getHours()] += t.total;
+        }
+      });
+      return { labels, totals, lastActualDate };
+    }
+
+    const lastNDays = {
+      last7Days: 7,
+      last14Days: 14,
+      last30Days: 30,
+    } as const;
+    if (range in lastNDays) {
+      const n = lastNDays[range as keyof typeof lastNDays];
+      const days = Array.from({ length: n }, (_, i) => {
+        const d = new Date(now);
+        d.setDate(now.getDate() - (n - 1 - i));
+        d.setHours(0, 0, 0, 0);
+        return d;
+      });
+      labels = days.map((d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+      totals = days.map((d) => {
+        const dayTxns = txns.filter((t) => {
+          const td = new Date(t.date || t.createdAt);
+          return (
+            td.getFullYear() === d.getFullYear() &&
+            td.getMonth() === d.getMonth() &&
+            td.getDate() === d.getDate()
+          );
+        });
+        return dayTxns.reduce((sum, t) => sum + t.total, 0);
+      });
+      lastActualDate = days[days.length - 1];
+      return { labels, totals, lastActualDate };
+    }
+
+    if (range === 'thisMonth') {
+      const month = now.getMonth();
+      const year = now.getFullYear();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const days: Date[] = Array.from(
+        { length: daysInMonth },
+        (_, i) => new Date(year, month, i + 1)
+      );
+      labels = days.map((d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+      totals = days.map((d) => {
+        const dayTxns = txns.filter((t) => {
+          const td = new Date(t.date || t.createdAt);
+          return (
+            td.getFullYear() === d.getFullYear() &&
+            td.getMonth() === d.getMonth() &&
+            td.getDate() === d.getDate()
+          );
+        });
+        return dayTxns.reduce((sum, t) => sum + t.total, 0);
+      });
+      lastActualDate = new Date(year, month, now.getDate());
+      return { labels, totals, lastActualDate };
+    }
+
+    if (range === 'lastMonth') {
+      const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const month = prevMonth.getMonth();
+      const year = prevMonth.getFullYear();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const days: Date[] = Array.from(
+        { length: daysInMonth },
+        (_, i) => new Date(year, month, i + 1)
+      );
+      labels = days.map((d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+      totals = days.map((d) => {
+        const dayTxns = txns.filter((t) => {
+          const td = new Date(t.date || t.createdAt);
+          return (
+            td.getFullYear() === d.getFullYear() &&
+            td.getMonth() === d.getMonth() &&
+            td.getDate() === d.getDate()
+          );
+        });
+        return dayTxns.reduce((sum, t) => sum + t.total, 0);
+      });
+      lastActualDate = days[days.length - 1];
+      return { labels, totals, lastActualDate };
+    }
+
+    if (range === 'thisQuarter' || range === 'lastQuarter') {
+      const quarter = Math.floor(now.getMonth() / 3) + 1;
+      let qYear = now.getFullYear();
+      let qNum = range === 'thisQuarter' ? quarter : quarter - 1;
+      if (qNum < 1) {
+        qNum = 4;
+        qYear--;
+      }
+      const startMonth = (qNum - 1) * 3;
+      labels = [];
+      totals = [];
+      for (let m = 0; m < 3; m++) {
+        const monthIndex = startMonth + m;
+        const monthTxns = txns.filter((t) => {
+          const d = new Date(t.date || t.createdAt);
+          return d.getFullYear() === qYear && d.getMonth() === monthIndex;
+        });
+        labels.push(
+          new Date(qYear, monthIndex).toLocaleString(undefined, { month: 'short', year: 'numeric' })
+        );
+        totals.push(monthTxns.reduce((sum, t) => sum + t.total, 0));
+      }
+      return { labels, totals, lastActualDate };
+    }
+
+    if (['last60Days', 'last90Days', 'last2Months'].includes(range)) {
+      let start: Date;
+      if (range === 'last60Days') {
+        start = new Date(now);
+        start.setDate(now.getDate() - 59);
+      } else if (range === 'last90Days') {
+        start = new Date(now);
+        start.setDate(now.getDate() - 89);
+      } else if (range === 'last2Months') {
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      } else {
+        start = now;
+      }
+      const end = new Date(now);
+
+      const weeks: { start: Date; end: Date }[] = [];
+
+      let currentWeekStart = new Date(now);
+      currentWeekStart.setDate(now.getDate() - now.getDay());
+      currentWeekStart.setHours(0, 0, 0, 0);
+
+      let wkStart = new Date(currentWeekStart);
+      const currentWeekEnd = new Date(wkStart);
+      currentWeekEnd.setDate(wkStart.getDate() + 6);
+      currentWeekEnd.setHours(23, 59, 59, 999);
+
+      weeks.push({ start: new Date(wkStart), end: new Date(currentWeekEnd) });
+
+      wkStart.setDate(wkStart.getDate() - 7);
+
+      while (wkStart >= start) {
+        const wkEnd = new Date(wkStart);
+        wkEnd.setDate(wkStart.getDate() + 6);
+        wkEnd.setHours(23, 59, 59, 999);
+
+        weeks.unshift({ start: new Date(wkStart), end: new Date(wkEnd) });
+        wkStart.setDate(wkStart.getDate() - 7);
+      }
+
+      labels = weeks.map(
+        ({ start, end }) =>
+          `${start.toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+          })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+      );
+      totals = weeks.map(({ start, end }) => {
+        return txns.reduce((sum, t) => {
+          const d = new Date(t.date || t.createdAt);
+          return sum + (d >= start && d <= end ? t.total : 0);
+        }, 0);
+      });
+      if (weeks.length > 0) {
+        lastActualDate = weeks[weeks.length - 1].end;
+      }
+      return { labels, totals, lastActualDate };
+    }
+
+    if (range === 'thisYear' || range === 'lastYear') {
+      let y = range === 'thisYear' ? now.getFullYear() : now.getFullYear() - 1;
+      labels = [];
+      totals = [];
+      for (let m = 0; m < 12; m++) {
+        const monthTxns = txns.filter((t) => {
+          const d = new Date(t.date || t.createdAt);
+          return d.getFullYear() === y && d.getMonth() === m;
+        });
+        labels.push(new Date(y, m).toLocaleString(undefined, { month: 'short', year: 'numeric' }));
+        totals.push(monthTxns.reduce((sum, t) => sum + t.total, 0));
+      }
+      return { labels, totals, lastActualDate };
+    }
+
+    if (range === 'thisWeek' || range === 'lastWeek') {
+      const weekStart = new Date(now);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      if (range === 'lastWeek') weekStart.setDate(weekStart.getDate() - 7);
+      labels = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(weekStart);
+        d.setDate(weekStart.getDate() + i);
+        return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
+      });
+      totals = Array(7).fill(0);
+      txns.forEach((t) => {
+        const d = new Date(t.date || t.createdAt);
+        for (let i = 0; i < 7; i++) {
+          const currLabelDate = new Date(weekStart);
+          currLabelDate.setDate(weekStart.getDate() + i);
+          if (
+            d.getFullYear() === currLabelDate.getFullYear() &&
+            d.getMonth() === currLabelDate.getMonth() &&
+            d.getDate() === currLabelDate.getDate()
+          ) {
+            totals[i] += t.total;
+          }
+        }
+      });
+      return { labels, totals, lastActualDate };
+    }
+
+    if (range === 'allTime') {
+      const years = txns.map((t) => new Date(t.date || t.createdAt).getFullYear());
+      const minYear = Math.min(...years),
+        maxYear = Math.max(...years);
+      labels = [];
+      totals = [];
+      for (let y = minYear; y <= maxYear; y++) {
+        for (let m = 0; m < 12; m++) {
+          const monthTxns = txns.filter((t) => {
+            const d = new Date(t.date || t.createdAt);
+            return d.getFullYear() === y && d.getMonth() === m;
+          });
+          if (monthTxns.length) {
+            labels.push(
+              new Date(y, m).toLocaleString(undefined, { month: 'short', year: 'numeric' })
+            );
+            totals.push(monthTxns.reduce((sum, t) => sum + t.total, 0));
+          }
+        }
+      }
+      return { labels, totals, lastActualDate };
+    }
+    return { labels: [], totals: [], lastActualDate };
+  }
+
+  calculateGrowth(totals: number[]): (number | null)[] {
+    return totals.map((val, i, arr) => {
+      if (i === 0) return null;
+      const prev = arr[i - 1];
+      if (prev === 0 && val === 0) return 0;
+      if (prev === 0 && val > 0) return 100;
+      return Math.round(((val - prev) / prev) * 100);
+    });
   }
 }
