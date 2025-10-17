@@ -45,11 +45,11 @@ export class AnalyticsComponent implements OnInit {
 
   metricOptions = [
     { value: 'sales', label: 'Sales Revenue' },
-    { value: 'growth', label: 'Sales Growth %' },
+    { value: 'growth', label: 'Sales Growth' },
     { value: 'forecast', label: 'Sales Forecast' },
   ];
 
-  selectedDateRange: string = 'last7Days';
+  selectedDateRange: string = 'today';
   selectedChartType: 'bar' | 'line' | 'pie' = 'bar';
   selectedMetric: 'sales' | 'growth' | 'forecast' = 'sales';
 
@@ -353,7 +353,7 @@ export class AnalyticsComponent implements OnInit {
             data: [...Array(actualLabelsToUse.length).fill(null), ...forecast],
             smooth: true,
             itemStyle: { color: '#f59e0b' },
-            lineStyle: { width: 3, type: 'dashed' },
+            lineStyle: { width: 3 },
           },
         ],
       };
