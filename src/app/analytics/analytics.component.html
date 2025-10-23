@@ -1,12 +1,15 @@
 <div class="dashboard-bg">
     <div class="analytics-container">
+
         <div class="top-filters">
             <div class="filter-row">
                 <div class="filter">
                     <label>Date Range</label>
                     <select [(ngModel)]="selectedDateRange" (change)="onFilterChange()">
                         @for (option of dateRangeOptions; track option.value) {
-                        <option [value]="option.value">{{ option.label }}</option>
+                        <option [value]="option.value">
+                            {{ option.label }}
+                        </option>
                         }
                     </select>
                 </div>
@@ -15,7 +18,9 @@
                     <select [(ngModel)]="selectedChartType" (change)="onChartTypeChange()"
                         [disabled]="selectedMetric !== 'sales'">
                         @for (option of chartTypeOptions; track option.value) {
-                        <option [value]="option.value">{{ option.label }}</option>
+                        <option [value]="option.value">
+                            {{ option.label }}
+                        </option>
                         }
                     </select>
                 </div>
@@ -23,14 +28,125 @@
                     <label>Metric</label>
                     <select [(ngModel)]="selectedMetric" (change)="onFilterChange()">
                         @for (option of metricOptions; track option.value) {
-                        <option [value]="option.value">{{ option.label }}</option>
+                        <option [value]="option.value">
+                            {{ option.label }}
+                        </option>
                         }
                     </select>
                 </div>
             </div>
         </div>
+
+
+
+        <div class="metrics-row">
+
+            <div class="metric-card">
+                <div class="metric-title">Revenue Growth Rate (MoM)</div>
+                <div class="metric-value">
+                    {{ getRevenueGrowthRate('month') !== null ? getRevenueGrowthRate('month') + '%' : '0%' }}
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Revenue Growth Rate (YoY)</div>
+                <div class="metric-value">
+                    {{ getRevenueGrowthRate('year') !== null ? getRevenueGrowthRate('year') + '%' : '0%' }}
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Average Order Value</div>
+                <div class="metric-value">
+                    ₦{{ getAverageOrderValue() | number:'1.0-2' }}
+                </div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Customer Retention Rate</div>
+                <div class="metric-value">
+                    {{ getCustomerRetentionRate() !== null ? getCustomerRetentionRate() + '%' : '0%' }}
+                </div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Busiest Day</div>
+                <div class="metric-value">
+                    {{ getBusiestDay() || 'N/A' }}
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Busiest Month</div>
+                <div class="metric-value">
+                    {{ getBusiestMonth() || 'N/A' }}
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Busiest Hour</div>
+                <div class="metric-value">
+                    {{ getBusiestHour() || 'N/A' }}
+                </div>
+            </div>
+
+
+
+            <div class="metric-card">
+                <div class="metric-title">Payment Success Rate</div>
+                <div class="metric-value">{{ getPaymentSuccessRate() }}%</div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+
+
+            <div class="metric-card">
+                <div class="metric-title">Discount Utilization</div>
+                <div class="metric-value">{{ getDiscountUtilizationRate() }}%</div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+
+
+            <div class="metric-card">
+                <div class="metric-title">Customer Revenue Split</div>
+                <div style="display: flex; gap: 1rem; margin-top: 0.5rem; justify-content: space-around;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 0.7rem; color: #6b7280; margin-bottom: 0.25rem; font-weight: 500;">
+                            First-Time</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: #111827;">{{
+                            getCustomerRevenueSplit().firstTime }}%</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 0.7rem; color: #6b7280; margin-bottom: 0.25rem; font-weight: 500;">Repeat
+                        </div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: #111827;">{{
+                            getCustomerRevenueSplit().repeat }}%</div>
+                    </div>
+                </div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+        </div>
+
+
+
         <div class="chart-main">
             <div echarts [options]="chartOption" class="main-chart"></div>
+        </div>
+
+
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3 class="chart-title">Revenue by Payment Method</h3>
+                <div echarts [options]="paymentMethodChartOption" class="secondary-chart"></div>
+            </div>
+
+
+            <div class="chart-card">
+                <h3 class="chart-title">Peak Revenue Hours</h3>
+                <div echarts [options]="peakHoursChartOption" class="secondary-chart"></div>
+            </div>
+
+
+            <div class="chart-card">
+                <h3 class="chart-title">Customer Type Distribution</h3>
+                <div echarts [options]="customerTypeChartOption" class="secondary-chart"></div>
+            </div>
         </div>
     </div>
 </div>
