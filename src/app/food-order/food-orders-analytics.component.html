@@ -1,0 +1,132 @@
+<div class="dashboard-bg">
+    <div class="analytics-container">
+        <div class="top-filters">
+            <div class="filter-row">
+                <div class="filter">
+                    <label>Date Range</label>
+                    <select [(ngModel)]="selectedDateRange" (change)="onFilterChange()">
+                        @for (option of dateRangeOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="metrics-row">
+            <div class="metric-card">
+                <div class="metric-title">Revenue Growth Rate (MoM)</div>
+                <div class="metric-value">
+                    {{ getRevenueGrowthRate('month') !== null ? getRevenueGrowthRate('month') + '%' : 'N/A' }}
+                </div>
+                <div class="metric-date-range">Previous Month vs This Month</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Revenue Growth Rate (YoY)</div>
+                <div class="metric-value">
+                    {{ getRevenueGrowthRate('year') !== null ? getRevenueGrowthRate('year') + '%' : 'N/A' }}
+                </div>
+                <div class="metric-date-range">Previous Year vs This Year</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Total Revenue</div>
+                <div class="metric-value">₦{{ getTotalRevenue() | number:'1.0-2' }}</div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Total Orders</div>
+                <div class="metric-value">{{ getTotalOrders() | number:'1.0-0' }}</div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Average Order Value</div>
+                <div class="metric-value">₦{{ getAverageOrderValue() | number:'1.0-2' }}</div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Order Completion Rate</div>
+                <div class="metric-value">{{ getOrderCompletionRate() }}%</div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Busiest Day</div>
+                <div class="metric-value">{{ getBusiestDay() || 'N/A' }}</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Busiest Hour</div>
+                <div class="metric-value">{{ getBusiestHour() || 'N/A' }}</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Total Unique Customers</div>
+                <div class="metric-value">{{ getTotalUniqueCustomers() }}</div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Delivery vs Pickup</div>
+                <div style="display: flex; gap: 1rem; margin-top: 0.5rem; justify-content: space-around;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 0.7rem; color: #6b7280; margin-bottom: 0.25rem; font-weight: 500;">
+                            Delivery</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: #111827;">{{
+                            getDeliveryPickupSplit().delivery }}%</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 0.7rem; color: #6b7280; margin-bottom: 0.25rem; font-weight: 500;">Pickup
+                        </div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: #111827;">{{
+                            getDeliveryPickupSplit().pickup }}%</div>
+                    </div>
+                </div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Pending Orders</div>
+                <div class="metric-value">{{ getPendingOrders() }}</div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Completed Orders</div>
+                <div class="metric-value">{{ getCompletedOrders() }}</div>
+                <div class="metric-date-range">{{ getDateRangeLabel() }}</div>
+            </div>
+        </div>
+
+        <div class="main-chart-card">
+            <h3 class="chart-title">Revenue Over Time</h3>
+            <div echarts [options]="revenueOverTimeChartOption" class="main-chart"></div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3 class="chart-title">Revenue by Delivery Method</h3>
+                <div echarts [options]="deliveryMethodChartOption" class="secondary-chart"></div>
+            </div>
+
+            <div class="chart-card">
+                <h3 class="chart-title">Orders Per Hour</h3>
+                <div echarts [options]="ordersPerHourChartOption" class="secondary-chart"></div>
+            </div>
+
+            <div class="chart-card">
+                <h3 class="chart-title">Top 10 Customers</h3>
+                <div echarts [options]="topCustomersChartOption" class="secondary-chart"></div>
+            </div>
+
+            <div class="chart-card">
+                <h3 class="chart-title">Orders by Day of Week</h3>
+                <div echarts [options]="ordersByDayChartOption" class="secondary-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>
