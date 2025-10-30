@@ -168,7 +168,7 @@ export class FoodOrdersAnalyticsService {
 
   getOrdersByDayOfWeek(orders: FoodOrder[], selectedDateRange: string): number[] {
     const filtered = this.filterByDateRange(orders, selectedDateRange);
-    const dayCounts = Array(7).fill(0); 
+    const dayCounts = Array(7).fill(0);
     filtered.forEach((o) => {
       const dayOfWeek = new Date(o.createdAt).getDay();
       dayCounts[dayOfWeek]++;
@@ -220,7 +220,6 @@ export class FoodOrdersAnalyticsService {
     return filtered.filter((o) => o.workTeller?.paymentStatus === 'FullyPaid').length;
   }
 
-  
   getRevenueOverTime(
     orders: FoodOrder[],
     selectedDateRange: string
@@ -229,7 +228,6 @@ export class FoodOrdersAnalyticsService {
     return { labels: result.labels, values: result.totals };
   }
 
-  
   prepareChartSeries(
     range: string,
     orders: FoodOrder[]
@@ -701,7 +699,6 @@ export class FoodOrdersAnalyticsService {
     const current = new Date();
     let previousRange: string;
 
-    
     switch (currentRange) {
       case 'today':
         previousRange = 'yesterday';
@@ -766,10 +763,36 @@ export class FoodOrdersAnalyticsService {
     } else if (metric === 'orders') {
       return orders.length;
     } else {
-      // aov
       const total = orders.reduce((sum, o) => sum + o.total, 0);
       return orders.length === 0 ? 0 : total / orders.length;
     }
+  }
+
+  getOrdersByTimeOfDay(
+    orders: FoodOrder[],
+    selectedDateRange: string
+  ): { name: string; value: number }[] {
+    const filtered = this.filterByDateRange(orders, selectedDateRange);
+
+    const timeSlots = {
+      Morning: 0,
+      Afternoon: 0,
+      Evening: 0,
+    };
+
+    filtered.forEach((o) => {
+      const hour = new Date(o.createdAt).getHours();
+
+      if (hour >= 6 && hour < 12) {
+        timeSlots.Morning++;
+      } else if (hour >= 12 && hour < 18) {
+        timeSlots.Afternoon++;
+      } else {
+        timeSlots.Evening++;
+      }
+    });
+
+    return Object.entries(timeSlots).map(([name, value]) => ({ name, value }));
   }
 
   getDateRangeLabel(selectedDateRange: string): string {

@@ -53,11 +53,317 @@ export interface ApiResponse {
   statusCode: number;
 }
 
+export interface DateRangeBounds {
+  periodStart: Date;
+  periodEnd: Date;
+  prevPeriodStart?: Date;
+  prevPeriodEnd?: Date;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AnalyticsService {
   private apiUrl = '/api/transactions';
 
   constructor(private http: HttpClient) {}
+
+  private getMonday(date: Date): Date {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  private getCustomerId(t: WorkTeller): string | undefined {
+    return t.workProfile?.email || t.workProfile?.name;
+  }
+
+  filterBySpecificDate(transactions: WorkTeller[], dateString: string): WorkTeller[] {
+    const targetDate = new Date(dateString);
+    const targetYear = targetDate.getFullYear();
+    const targetMonth = targetDate.getMonth();
+    const targetDay = targetDate.getDate();
+
+    return transactions.filter((t) => {
+      const transactionDate = new Date(t.createdAt);
+      return (
+        transactionDate.getFullYear() === targetYear &&
+        transactionDate.getMonth() === targetMonth &&
+        transactionDate.getDate() === targetDay
+      );
+    });
+  }
+
+  filterByDateRange(transactions: WorkTeller[], selectedDateRange: string): WorkTeller[] {
+    const { periodStart, periodEnd } = this.getDateRangeBounds(selectedDateRange);
+    return transactions.filter((t) => {
+      const d = new Date(t.date || t.createdAt);
+      return d >= periodStart && d <= periodEnd;
+    });
+  }
+
+  getDateRangeBounds(
+    selectedDateRange: string,
+    includePrevPeriod: boolean = false
+  ): DateRangeBounds {
+    const now = new Date();
+    let periodStart: Date, periodEnd: Date;
+    let prevPeriodStart: Date | undefined, prevPeriodEnd: Date | undefined;
+
+    switch (selectedDateRange) {
+      case 'today':
+        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        if (includePrevPeriod) {
+          prevPeriodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+          prevPeriodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        }
+        break;
+
+      case 'yesterday':
+        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        if (includePrevPeriod) {
+          prevPeriodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2);
+          prevPeriodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2);
+        }
+        break;
+
+      case 'thisWeek': {
+        const monday = this.getMonday(now);
+        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
+        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        if (includePrevPeriod) {
+          const prevMonday = new Date(monday);
+          prevMonday.setDate(monday.getDate() - 7);
+          prevPeriodStart = new Date(
+            prevMonday.getFullYear(),
+            prevMonday.getMonth(),
+            prevMonday.getDate()
+          );
+          const prevSunday = new Date(prevMonday);
+          prevSunday.setDate(prevMonday.getDate() + 6);
+          prevPeriodEnd = new Date(
+            prevSunday.getFullYear(),
+            prevSunday.getMonth(),
+            prevSunday.getDate()
+          );
+        }
+        break;
+      }
+
+      case 'lastWeek': {
+        const lastWeekMonday = this.getMonday(now);
+        lastWeekMonday.setDate(lastWeekMonday.getDate() - 7);
+        periodStart = new Date(
+          lastWeekMonday.getFullYear(),
+          lastWeekMonday.getMonth(),
+          lastWeekMonday.getDate()
+        );
+        const lastWeekSunday = new Date(lastWeekMonday);
+        lastWeekSunday.setDate(lastWeekMonday.getDate() + 6);
+        periodEnd = new Date(
+          lastWeekSunday.getFullYear(),
+          lastWeekSunday.getMonth(),
+          lastWeekSunday.getDate()
+        );
+        if (includePrevPeriod) {
+          const prevMonday = new Date(lastWeekMonday);
+          prevMonday.setDate(lastWeekMonday.getDate() - 7);
+          prevPeriodStart = new Date(
+            prevMonday.getFullYear(),
+            prevMonday.getMonth(),
+            prevMonday.getDate()
+          );
+          const prevSunday = new Date(prevMonday);
+          prevSunday.setDate(prevMonday.getDate() + 6);
+          prevPeriodEnd = new Date(
+            prevSunday.getFullYear(),
+            prevSunday.getMonth(),
+            prevSunday.getDate()
+          );
+        }
+        break;
+      }
+
+      case 'last7Days':
+        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+        if (includePrevPeriod) {
+          prevPeriodEnd = new Date(
+            periodStart.getFullYear(),
+            periodStart.getMonth(),
+            periodStart.getDate() - 1
+          );
+          prevPeriodStart = new Date(
+            prevPeriodEnd.getFullYear(),
+            prevPeriodEnd.getMonth(),
+            prevPeriodEnd.getDate() - 7
+          );
+        }
+        break;
+
+      case 'last14Days':
+        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
+        if (includePrevPeriod) {
+          prevPeriodEnd = new Date(
+            periodStart.getFullYear(),
+            periodStart.getMonth(),
+            periodStart.getDate() - 1
+          );
+          prevPeriodStart = new Date(
+            prevPeriodEnd.getFullYear(),
+            prevPeriodEnd.getMonth(),
+            prevPeriodEnd.getDate() - 14
+          );
+        }
+        break;
+
+      case 'last30Days':
+        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
+        if (includePrevPeriod) {
+          prevPeriodEnd = new Date(
+            periodStart.getFullYear(),
+            periodStart.getMonth(),
+            periodStart.getDate() - 1
+          );
+          prevPeriodStart = new Date(
+            prevPeriodEnd.getFullYear(),
+            prevPeriodEnd.getMonth(),
+            prevPeriodEnd.getDate() - 30
+          );
+        }
+        break;
+
+      case 'last60Days':
+        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
+        if (includePrevPeriod) {
+          prevPeriodEnd = new Date(
+            periodStart.getFullYear(),
+            periodStart.getMonth(),
+            periodStart.getDate() - 1
+          );
+          prevPeriodStart = new Date(
+            prevPeriodEnd.getFullYear(),
+            prevPeriodEnd.getMonth(),
+            prevPeriodEnd.getDate() - 60
+          );
+        }
+        break;
+
+      case 'last90Days':
+        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90);
+        if (includePrevPeriod) {
+          prevPeriodEnd = new Date(
+            periodStart.getFullYear(),
+            periodStart.getMonth(),
+            periodStart.getDate() - 1
+          );
+          prevPeriodStart = new Date(
+            prevPeriodEnd.getFullYear(),
+            prevPeriodEnd.getMonth(),
+            prevPeriodEnd.getDate() - 90
+          );
+        }
+        break;
+
+      case 'last2Months': {
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        const targetMonth = currentMonth - 2;
+        const targetYear = targetMonth < 0 ? currentYear - 1 : currentYear;
+        const adjustedMonth = targetMonth < 0 ? targetMonth + 12 : targetMonth;
+        periodStart = new Date(targetYear, adjustedMonth, 1);
+        periodEnd = new Date(targetYear, adjustedMonth + 1, 0);
+        if (includePrevPeriod) {
+          prevPeriodStart = new Date(targetYear, adjustedMonth - 1, 1);
+          prevPeriodEnd = new Date(targetYear, adjustedMonth, 0);
+        }
+        break;
+      }
+
+      case 'thisMonth':
+        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        if (includePrevPeriod) {
+          prevPeriodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          prevPeriodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+        }
+        break;
+
+      case 'lastMonth':
+        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        periodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+        if (includePrevPeriod) {
+          prevPeriodStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+          prevPeriodEnd = new Date(now.getFullYear(), now.getMonth() - 1, 0);
+        }
+        break;
+
+      case 'thisQuarter': {
+        const thisQuarter = Math.floor(now.getMonth() / 3);
+        const thisStartMonth = thisQuarter * 3;
+        periodStart = new Date(now.getFullYear(), thisStartMonth, 1);
+        periodEnd = new Date(now.getFullYear(), thisStartMonth + 3, 0);
+        if (includePrevPeriod) {
+          prevPeriodStart = new Date(now.getFullYear(), thisStartMonth - 3, 1);
+          prevPeriodEnd = new Date(now.getFullYear(), thisStartMonth, 0);
+        }
+        break;
+      }
+
+      case 'lastQuarter': {
+        const lastQuarter = Math.floor(now.getMonth() / 3) - 1;
+        const lastStartMonth = lastQuarter * 3;
+        periodStart = new Date(now.getFullYear(), lastStartMonth, 1);
+        periodEnd = new Date(now.getFullYear(), lastStartMonth + 3, 0);
+        if (includePrevPeriod) {
+          prevPeriodStart = new Date(now.getFullYear(), lastStartMonth - 3, 1);
+          prevPeriodEnd = new Date(now.getFullYear(), lastStartMonth, 0);
+        }
+        break;
+      }
+
+      case 'thisYear':
+        periodStart = new Date(now.getFullYear(), 0, 1);
+        periodEnd = new Date(now.getFullYear(), 11, 31);
+        if (includePrevPeriod) {
+          prevPeriodStart = new Date(now.getFullYear() - 1, 0, 1);
+          prevPeriodEnd = new Date(now.getFullYear() - 1, 11, 31);
+        }
+        break;
+
+      case 'lastYear':
+        periodStart = new Date(now.getFullYear() - 1, 0, 1);
+        periodEnd = new Date(now.getFullYear() - 1, 11, 31);
+        if (includePrevPeriod) {
+          prevPeriodStart = new Date(now.getFullYear() - 2, 0, 1);
+          prevPeriodEnd = new Date(now.getFullYear() - 2, 11, 31);
+        }
+        break;
+
+      case 'allTime':
+        periodStart = new Date(-8640000000000000);
+        periodEnd = new Date(8640000000000000);
+        if (includePrevPeriod) {
+          prevPeriodStart = new Date(-8640000000000000);
+          prevPeriodEnd = new Date(now.getTime() - 1);
+        }
+        break;
+
+      default:
+        periodStart = new Date(-8640000000000000);
+        periodEnd = new Date(8640000000000000);
+        break;
+    }
+
+    return { periodStart, periodEnd, prevPeriodStart, prevPeriodEnd };
+  }
 
   getTransactions(): Observable<WorkTeller[]> {
     return this.http.get<ApiResponse>(this.apiUrl).pipe(map((res) => res.data.data));
@@ -68,6 +374,7 @@ export class AnalyticsService {
     period: 'month' | 'year' = 'month'
   ): number | null {
     if (!transactions.length) return null;
+
     const now = new Date();
     let currentTotal = 0;
     let previousTotal = 0;
@@ -114,225 +421,52 @@ export class AnalyticsService {
     return Math.round(((currentTotal - previousTotal) / previousTotal) * 100);
   }
 
-  getCustomerRetentionRate(transactions: WorkTeller[], selectedDateRange: string): number | null {
+  getCustomerRetentionRate(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): number | null {
     if (!transactions.length) return null;
 
-    const now = new Date();
-    let periodStart: Date, periodEnd: Date, prevPeriodStart: Date, prevPeriodEnd: Date;
+    if (specificDate) {
+      const filtered = this.filterBySpecificDate(transactions, specificDate);
+      if (filtered.length === 0) return null;
 
-    const getCustomerId = (t: WorkTeller) => t.workProfile?.email || t.workProfile?.name;
+      const specificDateObj = new Date(specificDate);
+      specificDateObj.setHours(0, 0, 0, 0);
 
-    const getMonday = (date: Date): Date => {
-      const d = new Date(date);
-      const day = d.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      d.setDate(d.getDate() + diff);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
+      const transactionsBeforeDate = transactions.filter((t) => {
+        const d = new Date(t.createdAt);
+        d.setHours(0, 0, 0, 0);
+        return d < specificDateObj;
+      });
 
-    switch (selectedDateRange) {
-      case 'today': {
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        prevPeriodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        prevPeriodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        break;
-      }
-      case 'yesterday': {
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        prevPeriodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2);
-        prevPeriodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2);
-        break;
-      }
-      case 'thisWeek': {
-        const monday = getMonday(now);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const prevMonday = new Date(monday);
-        prevMonday.setDate(monday.getDate() - 7);
-        prevPeriodStart = new Date(
-          prevMonday.getFullYear(),
-          prevMonday.getMonth(),
-          prevMonday.getDate()
-        );
-        const prevSunday = new Date(prevMonday);
-        prevSunday.setDate(prevMonday.getDate() + 6);
-        prevPeriodEnd = new Date(
-          prevSunday.getFullYear(),
-          prevSunday.getMonth(),
-          prevSunday.getDate()
-        );
-        break;
-      }
-      case 'lastWeek': {
-        const monday = getMonday(now);
-        monday.setDate(monday.getDate() - 7);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        periodEnd = new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate());
-        const prevMonday = new Date(monday);
-        prevMonday.setDate(monday.getDate() - 7);
-        prevPeriodStart = new Date(
-          prevMonday.getFullYear(),
-          prevMonday.getMonth(),
-          prevMonday.getDate()
-        );
-        const prevSunday = new Date(prevMonday);
-        prevSunday.setDate(prevMonday.getDate() + 6);
-        prevPeriodEnd = new Date(
-          prevSunday.getFullYear(),
-          prevSunday.getMonth(),
-          prevSunday.getDate()
-        );
-        break;
-      }
-      case 'last7Days': {
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        prevPeriodEnd = new Date(
-          periodStart.getFullYear(),
-          periodStart.getMonth(),
-          periodStart.getDate() - 1
-        );
-        prevPeriodStart = new Date(
-          prevPeriodEnd.getFullYear(),
-          prevPeriodEnd.getMonth(),
-          prevPeriodEnd.getDate() - 7
-        );
-        break;
-      }
-      case 'last14Days': {
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-        prevPeriodEnd = new Date(
-          periodStart.getFullYear(),
-          periodStart.getMonth(),
-          periodStart.getDate() - 1
-        );
-        prevPeriodStart = new Date(
-          prevPeriodEnd.getFullYear(),
-          prevPeriodEnd.getMonth(),
-          prevPeriodEnd.getDate() - 14
-        );
-        break;
-      }
-      case 'last30Days': {
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
-        prevPeriodEnd = new Date(
-          periodStart.getFullYear(),
-          periodStart.getMonth(),
-          periodStart.getDate() - 1
-        );
-        prevPeriodStart = new Date(
-          prevPeriodEnd.getFullYear(),
-          prevPeriodEnd.getMonth(),
-          prevPeriodEnd.getDate() - 30
-        );
-        break;
-      }
-      case 'last60Days': {
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
-        prevPeriodEnd = new Date(
-          periodStart.getFullYear(),
-          periodStart.getMonth(),
-          periodStart.getDate() - 1
-        );
-        prevPeriodStart = new Date(
-          prevPeriodEnd.getFullYear(),
-          prevPeriodEnd.getMonth(),
-          prevPeriodEnd.getDate() - 60
-        );
-        break;
-      }
-      case 'last90Days': {
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90);
-        prevPeriodEnd = new Date(
-          periodStart.getFullYear(),
-          periodStart.getMonth(),
-          periodStart.getDate() - 1
-        );
-        prevPeriodStart = new Date(
-          prevPeriodEnd.getFullYear(),
-          prevPeriodEnd.getMonth(),
-          prevPeriodEnd.getDate() - 90
-        );
-        break;
-      }
-      case 'last2Months': {
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const targetMonth = currentMonth - 2;
-        const targetYear = targetMonth < 0 ? currentYear - 1 : currentYear;
-        const adjustedMonth = targetMonth < 0 ? targetMonth + 12 : targetMonth;
-        periodStart = new Date(targetYear, adjustedMonth, 1);
-        periodEnd = new Date(targetYear, adjustedMonth + 1, 0);
-        prevPeriodStart = new Date(targetYear, adjustedMonth - 1, 1);
-        prevPeriodEnd = new Date(targetYear, adjustedMonth, 0);
-        break;
-      }
-      case 'thisMonth': {
-        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        prevPeriodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        prevPeriodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-        break;
-      }
-      case 'lastMonth': {
-        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-        prevPeriodStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-        prevPeriodEnd = new Date(now.getFullYear(), now.getMonth() - 1, 0);
-        break;
-      }
-      case 'thisQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3);
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        prevPeriodStart = new Date(now.getFullYear(), startMonth - 3, 1);
-        prevPeriodEnd = new Date(now.getFullYear(), startMonth, 0);
-        break;
-      }
-      case 'lastQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3) - 1;
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        prevPeriodStart = new Date(now.getFullYear(), startMonth - 3, 1);
-        prevPeriodEnd = new Date(now.getFullYear(), startMonth, 0);
-        break;
-      }
-      case 'thisYear': {
-        periodStart = new Date(now.getFullYear(), 0, 1);
-        periodEnd = new Date(now.getFullYear(), 11, 31);
-        prevPeriodStart = new Date(now.getFullYear() - 1, 0, 1);
-        prevPeriodEnd = new Date(now.getFullYear() - 1, 11, 31);
-        break;
-      }
-      case 'lastYear': {
-        periodStart = new Date(now.getFullYear() - 1, 0, 1);
-        periodEnd = new Date(now.getFullYear() - 1, 11, 31);
-        prevPeriodStart = new Date(now.getFullYear() - 2, 0, 1);
-        prevPeriodEnd = new Date(now.getFullYear() - 2, 11, 31);
-        break;
-      }
-      case 'allTime': {
-        periodStart = new Date(-8640000000000000);
-        periodEnd = new Date(8640000000000000);
-        prevPeriodStart = new Date(-8640000000000000);
-        prevPeriodEnd = new Date(now.getTime() - 1);
-        break;
-      }
-      default: {
-        console.warn('Unknown date range:', selectedDateRange);
-        return 0;
-      }
+      const previousCustomers = new Set(
+        transactionsBeforeDate.map((t) => this.getCustomerId(t)).filter(Boolean)
+      );
+
+      const todaysCustomers = filtered.map((t) => this.getCustomerId(t)).filter(Boolean);
+
+      if (todaysCustomers.length === 0) return 0;
+
+      let returningCustomers = 0;
+      todaysCustomers.forEach((custId) => {
+        if (previousCustomers.has(custId)) {
+          returningCustomers++;
+        }
+      });
+
+      return Math.round((returningCustomers / todaysCustomers.length) * 100);
+    }
+
+    const { periodStart, periodEnd, prevPeriodStart, prevPeriodEnd } = this.getDateRangeBounds(
+      selectedDateRange,
+      true
+    );
+
+    if (!prevPeriodStart || !prevPeriodEnd) {
+      console.warn('Unknown date range:', selectedDateRange);
+      return 0;
     }
 
     const previousCustomers = new Set(
@@ -341,7 +475,7 @@ export class AnalyticsService {
           const d = new Date(t.date || t.createdAt);
           return d >= prevPeriodStart && d <= prevPeriodEnd;
         })
-        .map(getCustomerId)
+        .map((t) => this.getCustomerId(t))
         .filter(Boolean)
     );
 
@@ -351,7 +485,7 @@ export class AnalyticsService {
           const d = new Date(t.date || t.createdAt);
           return d >= periodStart && d <= periodEnd;
         })
-        .map(getCustomerId)
+        .map((t) => this.getCustomerId(t))
         .filter(Boolean)
     );
 
@@ -365,30 +499,221 @@ export class AnalyticsService {
     return Math.round((retained / previousCustomers.size) * 100);
   }
 
-  getBusiestDay(transactions: WorkTeller[]): string | null {
-    if (!transactions.length) return null;
-    const dayCounts = Array(7).fill(0);
+  getTransactionCount(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): number {
+    if (!transactions.length) return 0;
 
-    transactions.forEach((t) => {
+    let filtered: WorkTeller[];
+    if (specificDate) {
+      filtered = this.filterBySpecificDate(transactions, specificDate);
+    } else {
+      filtered = this.filterByDateRange(transactions, selectedDateRange);
+    }
+
+    return filtered.length;
+  }
+
+  getTotalRevenue(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): number {
+    if (!transactions.length) return 0;
+
+    let filtered: WorkTeller[];
+    if (specificDate) {
+      filtered = this.filterBySpecificDate(transactions, specificDate);
+    } else {
+      filtered = this.filterByDateRange(transactions, selectedDateRange);
+    }
+
+    return filtered.reduce((sum, t) => sum + t.total, 0);
+  }
+
+  getTotalUniqueCustomers(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): number {
+    if (!transactions.length) return 0;
+
+    let filtered: WorkTeller[];
+    if (specificDate) {
+      filtered = this.filterBySpecificDate(transactions, specificDate);
+    } else {
+      filtered = this.filterByDateRange(transactions, selectedDateRange);
+    }
+
+    const uniqueCustomers = new Set(
+      filtered
+        .filter((t) => t.total > 0)
+        .map((t) => this.getCustomerId(t))
+        .filter(Boolean)
+    );
+
+    return uniqueCustomers.size;
+  }
+
+  getTop10Customers(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): Array<{ name: string; value: number; customerId: string }> {
+    if (!transactions.length) return [];
+
+    let filtered: WorkTeller[];
+    if (specificDate) {
+      filtered = this.filterBySpecificDate(transactions, specificDate);
+    } else {
+      filtered = this.filterByDateRange(transactions, selectedDateRange);
+    }
+
+    const customerData: {
+      [key: string]: {
+        customerId: string;
+        name: string;
+        value: number;
+      };
+    } = {};
+
+    filtered.forEach((t) => {
+      const custId = t.workProfile?.email || 'unknown';
+      const custName = t.workProfile?.name || 'Unknown';
+
+      if (!customerData[custId]) {
+        customerData[custId] = {
+          customerId: custId,
+          name: custName,
+          value: 0,
+        };
+      }
+
+      customerData[custId].name = custName;
+      customerData[custId].value += t.total;
+    });
+
+    return Object.values(customerData)
+      .filter((customer) => customer.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+  }
+
+  getTransactionsByDayOfWeek(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): { labels: string[]; counts: number[] } {
+    if (!transactions.length) return { labels: [], counts: [] };
+
+    let filtered: WorkTeller[];
+    if (specificDate) {
+      filtered = this.filterBySpecificDate(transactions, specificDate);
+    } else {
+      filtered = this.filterByDateRange(transactions, selectedDateRange);
+    }
+
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const counts = Array(7).fill(0);
+
+    filtered.forEach((t) => {
+      const d = new Date(t.date || t.createdAt);
+      counts[d.getDay()]++;
+    });
+
+    return { labels: days, counts };
+  }
+
+  getTransactionsByTimeOfDay(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): Array<{ name: string; value: number }> {
+    if (!transactions.length) return [];
+
+    let filtered: WorkTeller[];
+    if (specificDate) {
+      filtered = this.filterBySpecificDate(transactions, specificDate);
+    } else {
+      filtered = this.filterByDateRange(transactions, selectedDateRange);
+    }
+
+    const timeSlots = {
+      Morning: 0,
+      Afternoon: 0,
+      Evening: 0,
+    };
+
+    filtered.forEach((t) => {
+      const d = new Date(t.date || t.createdAt);
+      const hour = d.getHours();
+
+      if (hour >= 6 && hour < 12) {
+        timeSlots.Morning++;
+      } else if (hour >= 12 && hour < 18) {
+        timeSlots.Afternoon++;
+      } else {
+        timeSlots.Evening++;
+      }
+    });
+
+    return [
+      { name: 'Morning', value: timeSlots.Morning },
+      { name: 'Afternoon', value: timeSlots.Afternoon },
+      { name: 'Evening', value: timeSlots.Evening },
+    ].filter((slot) => slot.value > 0);
+  }
+
+  getBusiestDay(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): string | null {
+    if (!transactions.length) return null;
+
+    const filtered = specificDate
+      ? this.filterBySpecificDate(transactions, specificDate)
+      : this.filterByDateRange(transactions, selectedDateRange);
+
+    if (!filtered.length) return null;
+
+    const dayCounts: number[] = Array(7).fill(0);
+    filtered.forEach((t) => {
       const d = new Date(t.date || t.createdAt);
       dayCounts[d.getDay()]++;
     });
 
     const max = Math.max(...dayCounts);
+    if (max === 0) return null;
+
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     return days[dayCounts.indexOf(max)];
   }
 
-  getBusiestMonth(transactions: WorkTeller[]): string | null {
+  getBusiestMonth(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): string | null {
     if (!transactions.length) return null;
-    const monthCounts = Array(12).fill(0);
 
-    transactions.forEach((t) => {
+    const filtered = specificDate
+      ? this.filterBySpecificDate(transactions, specificDate)
+      : this.filterByDateRange(transactions, selectedDateRange);
+
+    if (!filtered.length) return null;
+
+    const monthCounts: number[] = Array(12).fill(0);
+    filtered.forEach((t) => {
       const d = new Date(t.date || t.createdAt);
       monthCounts[d.getMonth()]++;
     });
 
     const max = Math.max(...monthCounts);
+    if (max === 0) return null;
+
     const months = [
       'January',
       'February',
@@ -406,18 +731,239 @@ export class AnalyticsService {
     return months[monthCounts.indexOf(max)];
   }
 
-  getBusiestHour(transactions: WorkTeller[]): string | null {
+  getBusiestHour(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): string | null {
     if (!transactions.length) return null;
-    const hourCounts = Array(24).fill(0);
 
-    transactions.forEach((t) => {
+    const filtered = specificDate
+      ? this.filterBySpecificDate(transactions, specificDate)
+      : this.filterByDateRange(transactions, selectedDateRange);
+
+    if (!filtered.length) return null;
+
+    const hourCounts: number[] = Array(24).fill(0);
+    filtered.forEach((t) => {
       const d = new Date(t.date || t.createdAt);
       hourCounts[d.getHours()]++;
     });
 
     const max = Math.max(...hourCounts);
+    if (max === 0) return null;
+
     const hour = hourCounts.indexOf(max);
     return hour.toString().padStart(2, '0') + ':00';
+  }
+
+  getAverageOrderValue(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): number {
+    if (!transactions.length) return 0;
+
+    let filtered: WorkTeller[];
+    if (specificDate) {
+      filtered = this.filterBySpecificDate(transactions, specificDate);
+    } else {
+      filtered = this.filterByDateRange(transactions, selectedDateRange);
+    }
+
+    if (filtered.length === 0) return 0;
+
+    const totalRevenue = filtered.reduce((sum, t) => sum + t.total, 0);
+    return totalRevenue / filtered.length;
+  }
+
+  getPaymentSuccessRate(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): number {
+    if (!transactions.length) return 0;
+
+    let filtered: WorkTeller[];
+    if (specificDate) {
+      filtered = this.filterBySpecificDate(transactions, specificDate);
+    } else {
+      filtered = this.filterByDateRange(transactions, selectedDateRange);
+    }
+
+    if (filtered.length === 0) return 0;
+
+    const successfulPayments = filtered.filter((t) => {
+      const status = (t.paymentStatus || '').toLowerCase();
+      return (
+        status === 'fullypaid' ||
+        status === 'paid' ||
+        status === 'success' ||
+        status === 'successful' ||
+        status === 'completed'
+      );
+    }).length;
+
+    return Math.round((successfulPayments / filtered.length) * 100);
+  }
+
+  getMostPopularPaymentMethod(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): string {
+    if (!transactions.length) return 'N/A';
+
+    const filtered = specificDate
+      ? this.filterBySpecificDate(transactions, specificDate)
+      : this.filterByDateRange(transactions, selectedDateRange);
+
+    if (!filtered.length) return 'N/A';
+
+    const methodCounts: { [key: string]: number } = {};
+    filtered.forEach((t) => {
+      const method = t.paymentMethod || 'Unknown';
+      methodCounts[method] = (methodCounts[method] || 0) + 1;
+    });
+
+    const entries = Object.entries(methodCounts);
+    if (entries.length === 0) return 'N/A';
+
+    return entries.reduce((a, b) => (a[1] > b[1] ? a : b))[0];
+  }
+
+  getCustomerRevenueSplit(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): { firstTime: number; repeat: number } {
+    if (!transactions.length) return { firstTime: 0, repeat: 0 };
+
+    let filtered: WorkTeller[];
+    if (specificDate) {
+      filtered = this.filterBySpecificDate(transactions, specificDate);
+    } else {
+      filtered = this.filterByDateRange(transactions, selectedDateRange);
+    }
+
+    if (filtered.length === 0) return { firstTime: 0, repeat: 0 };
+
+    const customerFirstTransaction: { [key: string]: Date } = {};
+    transactions.forEach((t) => {
+      const custId = this.getCustomerId(t);
+      if (!custId) return;
+      const txDate = new Date(t.date || t.createdAt);
+      if (!customerFirstTransaction[custId] || txDate < customerFirstTransaction[custId]) {
+        customerFirstTransaction[custId] = txDate;
+      }
+    });
+
+    let firstTimeRevenue = 0;
+    let repeatRevenue = 0;
+
+    filtered.forEach((t) => {
+      const custId = this.getCustomerId(t);
+      if (!custId) return;
+      const txDate = new Date(t.date || t.createdAt);
+      const firstTxDate = customerFirstTransaction[custId];
+
+      if (firstTxDate && txDate.getTime() === firstTxDate.getTime()) {
+        firstTimeRevenue += t.total;
+      } else {
+        repeatRevenue += t.total;
+      }
+    });
+
+    const total = firstTimeRevenue + repeatRevenue;
+    if (total === 0) return { firstTime: 0, repeat: 0 };
+
+    return {
+      firstTime: Math.round((firstTimeRevenue / total) * 100),
+      repeat: Math.round((repeatRevenue / total) * 100),
+    };
+  }
+
+  getDiscountUtilizationRate(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): number {
+    if (!transactions.length) return 0;
+
+    let filtered: WorkTeller[];
+    if (specificDate) {
+      filtered = this.filterBySpecificDate(transactions, specificDate);
+    } else {
+      filtered = this.filterByDateRange(transactions, selectedDateRange);
+    }
+
+    if (filtered.length === 0) return 0;
+
+    const withDiscount = filtered.filter((t) => t.discount > 0).length;
+    return Math.round((withDiscount / filtered.length) * 100);
+  }
+
+  getPeakRevenueHours(transactions: WorkTeller[], specificDate?: string): string {
+    if (!transactions.length) return 'N/A';
+
+    const filtered = specificDate
+      ? this.filterBySpecificDate(transactions, specificDate)
+      : transactions;
+
+    if (!filtered.length) return 'N/A';
+
+    const hourRevenue: number[] = Array(24).fill(0);
+    filtered.forEach((t) => {
+      const d = new Date(t.date || t.createdAt);
+      hourRevenue[d.getHours()] += t.total;
+    });
+
+    const maxRevenue = Math.max(...hourRevenue);
+    if (maxRevenue === 0) return 'N/A';
+
+    const peakHour = hourRevenue.indexOf(maxRevenue);
+    return peakHour.toString().padStart(2, '0') + ':00';
+  }
+
+  getRevenueByPaymentMethod(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): Array<{ name: string; value: number }> {
+    const filtered = specificDate
+      ? this.filterBySpecificDate(transactions, specificDate)
+      : this.filterByDateRange(transactions, selectedDateRange);
+
+    if (!filtered.length) return [];
+
+    const methodRevenue: { [key: string]: number } = {};
+    filtered.forEach((t) => {
+      const method = t.paymentMethod || 'Unknown';
+      methodRevenue[method] = (methodRevenue[method] || 0) + t.total;
+    });
+
+    return Object.entries(methodRevenue)
+      .map(([name, value]) => ({ name, value }))
+      .filter((item) => item.value > 0);
+  }
+
+  getRevenueByHour(
+    transactions: WorkTeller[],
+    selectedDateRange: string,
+    specificDate?: string
+  ): number[] {
+    const filtered = specificDate
+      ? this.filterBySpecificDate(transactions, specificDate)
+      : this.filterByDateRange(transactions, selectedDateRange);
+
+    const hourData: number[] = Array(24).fill(0);
+
+    filtered.forEach((t) => {
+      const d = new Date(t.date || t.createdAt);
+      hourData[d.getHours()] += t.total;
+    });
+
+    return hourData;
   }
 
   calculateGrowth(totals: number[]): (number | null)[] {
@@ -454,122 +1000,8 @@ export class AnalyticsService {
       const predictedValue = m * (n + i) + b;
       forecast.push(Math.max(0, Math.round(predictedValue)));
     }
+
     return forecast;
-  }
-
-  getAverageOrderValue(transactions: WorkTeller[], selectedDateRange: string): number {
-    if (!transactions.length) return 0;
-    const now = new Date();
-    let periodStart: Date, periodEnd: Date;
-
-    const getMonday = (date: Date): Date => {
-      const d = new Date(date);
-      const day = d.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      d.setDate(d.getDate() + diff);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
-
-    switch (selectedDateRange) {
-      case 'today':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'yesterday':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        break;
-      case 'thisWeek': {
-        const monday = getMonday(now);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      }
-      case 'lastWeek': {
-        const monday = getMonday(now);
-        monday.setDate(monday.getDate() - 7);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        periodEnd = new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate());
-        break;
-      }
-      case 'last7Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        break;
-      case 'last14Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-        break;
-      case 'last30Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
-        break;
-      case 'last60Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
-        break;
-      case 'last90Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90);
-        break;
-      case 'last2Months': {
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const targetMonth = currentMonth - 2;
-        const targetYear = targetMonth < 0 ? currentYear - 1 : currentYear;
-        const adjustedMonth = targetMonth < 0 ? targetMonth + 12 : targetMonth;
-        periodStart = new Date(targetYear, adjustedMonth, 1);
-        periodEnd = new Date(targetYear, adjustedMonth + 1, 0);
-        break;
-      }
-      case 'thisMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        break;
-      case 'lastMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-        break;
-      case 'thisQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3);
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'lastQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3) - 1;
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'thisYear':
-        periodStart = new Date(now.getFullYear(), 0, 1);
-        periodEnd = new Date(now.getFullYear(), 11, 31);
-        break;
-      case 'lastYear':
-        periodStart = new Date(now.getFullYear() - 1, 0, 1);
-        periodEnd = new Date(now.getFullYear() - 1, 11, 31);
-        break;
-      case 'allTime':
-        periodStart = new Date(-8640000000000000);
-        periodEnd = new Date(8640000000000000);
-        break;
-      default:
-        return 0;
-    }
-
-    const filtered = transactions.filter((t) => {
-      const d = new Date(t.date || t.createdAt);
-      return d >= periodStart && d <= periodEnd;
-    });
-    if (filtered.length === 0) return 0;
-    const totalRevenue = filtered.reduce((sum, t) => sum + t.total, 0);
-    return totalRevenue / filtered.length;
   }
 
   trimZeroEdges(arr: number[], labels: string[]): { data: number[]; labels: string[] } {
@@ -588,21 +1020,32 @@ export class AnalyticsService {
 
   prepareChartSeries(
     range: string,
-    txns: WorkTeller[]
+    txns: WorkTeller[],
+    specificDate?: string
   ): { labels: string[]; totals: number[]; lastActualDate: Date | null } {
     const now = new Date();
     let labels: string[] = [];
     let totals: number[] = [];
     let lastActualDate: Date | null = null;
 
-    const getMonday = (date: Date): Date => {
-      const d = new Date(date);
-      const day = d.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      d.setDate(d.getDate() + diff);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
+    if (specificDate) {
+      const targetDate = new Date(specificDate);
+      labels = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0') + ':00');
+      totals = Array(24).fill(0);
+
+      txns.forEach((t) => {
+        const d = new Date(t.createdAt);
+        if (
+          d.getDate() === targetDate.getDate() &&
+          d.getMonth() === targetDate.getMonth() &&
+          d.getFullYear() === targetDate.getFullYear()
+        ) {
+          totals[d.getHours()] += t.total;
+        }
+      });
+
+      return { labels, totals, lastActualDate: targetDate };
+    }
 
     if (range === 'today' || range === 'yesterday') {
       labels = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0') + ':00');
@@ -647,6 +1090,7 @@ export class AnalyticsService {
         });
         return dayTxns.reduce((sum, t) => sum + t.total, 0);
       });
+
       lastActualDate = days[days.length - 1];
       return { labels, totals, lastActualDate };
     }
@@ -672,6 +1116,7 @@ export class AnalyticsService {
         });
         return dayTxns.reduce((sum, t) => sum + t.total, 0);
       });
+
       lastActualDate = new Date(year, month, now.getDate());
       return { labels, totals, lastActualDate };
     }
@@ -698,6 +1143,7 @@ export class AnalyticsService {
         });
         return dayTxns.reduce((sum, t) => sum + t.total, 0);
       });
+
       lastActualDate = days[days.length - 1];
       return { labels, totals, lastActualDate };
     }
@@ -710,20 +1156,24 @@ export class AnalyticsService {
         qNum = 4;
         qYear--;
       }
+
       const startMonth = (qNum - 1) * 3;
       labels = [];
       totals = [];
+
       for (let m = 0; m < 3; m++) {
         const monthIndex = startMonth + m;
         const monthTxns = txns.filter((t) => {
           const d = new Date(t.date || t.createdAt);
           return d.getFullYear() === qYear && d.getMonth() === monthIndex;
         });
+
         labels.push(
           new Date(qYear, monthIndex).toLocaleString(undefined, { month: 'short', year: 'numeric' })
         );
         totals.push(monthTxns.reduce((sum, t) => sum + t.total, 0));
       }
+
       return { labels, totals, lastActualDate };
     }
 
@@ -754,6 +1204,7 @@ export class AnalyticsService {
         });
         return dayTxns.reduce((sum, t) => sum + t.total, 0);
       });
+
       lastActualDate = endDate;
       return { labels, totals, lastActualDate };
     }
@@ -779,7 +1230,6 @@ export class AnalyticsService {
           start: new Date(currentStart),
           end: weekEnd <= endDate ? weekEnd : new Date(endDate),
         });
-
         currentStart.setDate(currentStart.getDate() + 7);
       }
 
@@ -806,19 +1256,22 @@ export class AnalyticsService {
       let y = range === 'thisYear' ? now.getFullYear() : now.getFullYear() - 1;
       labels = [];
       totals = [];
+
       for (let m = 0; m < 12; m++) {
         const monthTxns = txns.filter((t) => {
           const d = new Date(t.date || t.createdAt);
           return d.getFullYear() === y && d.getMonth() === m;
         });
+
         labels.push(new Date(y, m).toLocaleString(undefined, { month: 'short', year: 'numeric' }));
         totals.push(monthTxns.reduce((sum, t) => sum + t.total, 0));
       }
+
       return { labels, totals, lastActualDate };
     }
 
     if (range === 'thisWeek' || range === 'lastWeek') {
-      const monday = getMonday(now);
+      const monday = this.getMonday(now);
       if (range === 'lastWeek') {
         monday.setDate(monday.getDate() - 7);
       }
@@ -844,6 +1297,7 @@ export class AnalyticsService {
           }
         }
       });
+
       return { labels, totals, lastActualDate };
     }
 
@@ -851,14 +1305,17 @@ export class AnalyticsService {
       const years = txns.map((t) => new Date(t.date || t.createdAt).getFullYear());
       const minYear = Math.min(...years);
       const maxYear = Math.max(...years);
+
       labels = [];
       totals = [];
+
       for (let y = minYear; y <= maxYear; y++) {
         for (let m = 0; m < 12; m++) {
           const monthTxns = txns.filter((t) => {
             const d = new Date(t.date || t.createdAt);
             return d.getFullYear() === y && d.getMonth() === m;
           });
+
           if (monthTxns.length) {
             labels.push(
               new Date(y, m).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
@@ -867,6 +1324,7 @@ export class AnalyticsService {
           }
         }
       }
+
       return { labels, totals, lastActualDate };
     }
 
@@ -875,24 +1333,33 @@ export class AnalyticsService {
 
   prepareChartSeriesVolume(
     range: string,
-    txns: WorkTeller[]
+    txns: WorkTeller[],
+    specificDate?: string
   ): { labels: string[]; counts: number[] } {
-    const now = new Date();
-    let labels: string[] = [];
-    let counts: number[] = [];
+    if (specificDate) {
+      const targetDate = new Date(specificDate);
+      const labels = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0') + ':00');
+      const counts = Array(24).fill(0);
 
-    const getMonday = (date: Date): Date => {
-      const d = new Date(date);
-      const day = d.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      d.setDate(d.getDate() + diff);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
+      txns.forEach((t) => {
+        const d = new Date(t.createdAt);
+        if (
+          d.getDate() === targetDate.getDate() &&
+          d.getMonth() === targetDate.getMonth() &&
+          d.getFullYear() === targetDate.getFullYear()
+        ) {
+          counts[d.getHours()]++;
+        }
+      });
+
+      return { labels, counts };
+    }
+
+    const now = new Date();
 
     if (range === 'today' || range === 'yesterday') {
-      labels = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0') + ':00');
-      counts = Array(24).fill(0);
+      const labels = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0') + ':00');
+      const counts = Array(24).fill(0);
       const refDate = new Date(now);
       if (range === 'yesterday') {
         refDate.setDate(now.getDate() - 1);
@@ -905,9 +1372,10 @@ export class AnalyticsService {
           d.getMonth() === refDate.getMonth() &&
           d.getFullYear() === refDate.getFullYear()
         ) {
-          counts[d.getHours()] += 1;
+          counts[d.getHours()]++;
         }
       });
+
       return { labels, counts };
     }
 
@@ -921,8 +1389,10 @@ export class AnalyticsService {
         return d;
       });
 
-      labels = days.map((d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
-      counts = days.map((d) => {
+      const labels = days.map((d) =>
+        d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      );
+      const counts = days.map((d) => {
         return txns.filter((t) => {
           const td = new Date(t.date || t.createdAt);
           return (
@@ -932,6 +1402,7 @@ export class AnalyticsService {
           );
         }).length;
       });
+
       return { labels, counts };
     }
 
@@ -944,8 +1415,10 @@ export class AnalyticsService {
         (_, i) => new Date(year, month, i + 1)
       );
 
-      labels = days.map((d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
-      counts = days.map((d) => {
+      const labels = days.map((d) =>
+        d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      );
+      const counts = days.map((d) => {
         return txns.filter((t) => {
           const td = new Date(t.date || t.createdAt);
           return (
@@ -955,6 +1428,7 @@ export class AnalyticsService {
           );
         }).length;
       });
+
       return { labels, counts };
     }
 
@@ -968,8 +1442,10 @@ export class AnalyticsService {
         (_, i) => new Date(year, month, i + 1)
       );
 
-      labels = days.map((d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
-      counts = days.map((d) => {
+      const labels = days.map((d) =>
+        d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      );
+      const counts = days.map((d) => {
         return txns.filter((t) => {
           const td = new Date(t.date || t.createdAt);
           return (
@@ -979,6 +1455,81 @@ export class AnalyticsService {
           );
         }).length;
       });
+
+      return { labels, counts };
+    }
+
+    if (['last60Days', 'last90Days'].includes(range)) {
+      const n = range === 'last60Days' ? 60 : 90;
+      const startDate = new Date(now);
+      startDate.setDate(now.getDate() - n + 1);
+      startDate.setHours(0, 0, 0, 0);
+
+      const endDate = new Date(now);
+      endDate.setHours(23, 59, 59, 999);
+
+      const weeks: { start: Date; end: Date }[] = [];
+      let currentStart = new Date(startDate);
+
+      while (currentStart <= endDate) {
+        const weekEnd = new Date(currentStart);
+        weekEnd.setDate(currentStart.getDate() + 6);
+        weekEnd.setHours(23, 59, 59, 999);
+
+        weeks.push({
+          start: new Date(currentStart),
+          end: weekEnd <= endDate ? weekEnd : new Date(endDate),
+        });
+        currentStart.setDate(currentStart.getDate() + 7);
+      }
+
+      const labels = weeks.map(
+        ({ start, end }) =>
+          `${start.toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+          })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+      );
+
+      const counts = weeks.map(
+        ({ start, end }) =>
+          txns.filter((t) => {
+            const td = new Date(t.date || t.createdAt);
+            return td >= start && td <= end;
+          }).length
+      );
+
+      return { labels, counts };
+    }
+
+    if (range === 'thisWeek' || range === 'lastWeek') {
+      const monday = this.getMonday(now);
+      if (range === 'lastWeek') {
+        monday.setDate(monday.getDate() - 7);
+      }
+
+      const labels = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
+      });
+
+      const counts = Array(7).fill(0);
+      txns.forEach((t) => {
+        const d = new Date(t.date || t.createdAt);
+        for (let i = 0; i < 7; i++) {
+          const currLabelDate = new Date(monday);
+          currLabelDate.setDate(monday.getDate() + i);
+          if (
+            d.getFullYear() === currLabelDate.getFullYear() &&
+            d.getMonth() === currLabelDate.getMonth() &&
+            d.getDate() === currLabelDate.getDate()
+          ) {
+            counts[i]++;
+          }
+        }
+      });
+
       return { labels, counts };
     }
 
@@ -990,20 +1541,24 @@ export class AnalyticsService {
         qNum = 4;
         qYear--;
       }
+
       const startMonth = (qNum - 1) * 3;
-      labels = [];
-      counts = [];
+      const labels = [];
+      const counts = [];
+
       for (let m = 0; m < 3; m++) {
         const monthIndex = startMonth + m;
-        const monthTxnsCount = txns.filter((t) => {
+        const monthTxns = txns.filter((t) => {
           const d = new Date(t.date || t.createdAt);
           return d.getFullYear() === qYear && d.getMonth() === monthIndex;
-        }).length;
+        });
+
         labels.push(
           new Date(qYear, monthIndex).toLocaleString(undefined, { month: 'short', year: 'numeric' })
         );
-        counts.push(monthTxnsCount);
+        counts.push(monthTxns.length);
       }
+
       return { labels, counts };
     }
 
@@ -1022,8 +1577,10 @@ export class AnalyticsService {
         days.push(new Date(d));
       }
 
-      labels = days.map((d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
-      counts = days.map((d) => {
+      const labels = days.map((d) =>
+        d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      );
+      const counts = days.map((d) => {
         return txns.filter((t) => {
           const td = new Date(t.date || t.createdAt);
           return (
@@ -1033,94 +1590,25 @@ export class AnalyticsService {
           );
         }).length;
       });
-      return { labels, counts };
-    }
-
-    if (['last60Days', 'last90Days'].includes(range)) {
-      const n = range === 'last60Days' ? 60 : 90;
-      const startDate = new Date(now);
-      startDate.setDate(now.getDate() - n + 1); 
-      startDate.setHours(0, 0, 0, 0);
-
-      const endDate = new Date(now);
-      endDate.setHours(23, 59, 59, 999);
-
-      const weeks: { start: Date; end: Date }[] = [];
-      let currentStart = new Date(startDate);
-
-      while (currentStart <= endDate) {
-        const weekEnd = new Date(currentStart);
-        weekEnd.setDate(currentStart.getDate() + 6);
-        weekEnd.setHours(23, 59, 59, 999);
-
-        weeks.push({
-          start: new Date(currentStart),
-          end: weekEnd <= endDate ? weekEnd : new Date(endDate),
-        });
-
-        currentStart.setDate(currentStart.getDate() + 7);
-      }
-
-      labels = weeks.map(
-        ({ start, end }) =>
-          `${start.toLocaleDateString(undefined, {
-            month: 'short',
-            day: 'numeric',
-          })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
-      );
-
-      counts = weeks.map(({ start, end }) =>
-        txns.reduce((sum, t) => {
-          const td = new Date(t.date || t.createdAt);
-          return td >= start && td <= end ? sum + 1 : sum;
-        }, 0)
-      );
 
       return { labels, counts };
     }
 
     if (range === 'thisYear' || range === 'lastYear') {
       let y = range === 'thisYear' ? now.getFullYear() : now.getFullYear() - 1;
-      labels = [];
-      counts = [];
+      const labels = [];
+      const counts = [];
+
       for (let m = 0; m < 12; m++) {
-        const monthTxnsCount = txns.filter((t) => {
+        const monthTxns = txns.filter((t) => {
           const d = new Date(t.date || t.createdAt);
           return d.getFullYear() === y && d.getMonth() === m;
-        }).length;
+        });
+
         labels.push(new Date(y, m).toLocaleString(undefined, { month: 'short', year: 'numeric' }));
-        counts.push(monthTxnsCount);
-      }
-      return { labels, counts };
-    }
-
-    if (range === 'thisWeek' || range === 'lastWeek') {
-      const monday = getMonday(now);
-      if (range === 'lastWeek') {
-        monday.setDate(monday.getDate() - 7);
+        counts.push(monthTxns.length);
       }
 
-      labels = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + i);
-        return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
-      });
-
-      counts = Array(7).fill(0);
-      txns.forEach((t) => {
-        const d = new Date(t.date || t.createdAt);
-        for (let i = 0; i < 7; i++) {
-          const currLabelDate = new Date(monday);
-          currLabelDate.setDate(monday.getDate() + i);
-          if (
-            d.getFullYear() === currLabelDate.getFullYear() &&
-            d.getMonth() === currLabelDate.getMonth() &&
-            d.getDate() === currLabelDate.getDate()
-          ) {
-            counts[i] += 1;
-          }
-        }
-      });
       return { labels, counts };
     }
 
@@ -1128,838 +1616,40 @@ export class AnalyticsService {
       const years = txns.map((t) => new Date(t.date || t.createdAt).getFullYear());
       const minYear = Math.min(...years);
       const maxYear = Math.max(...years);
-      labels = [];
-      counts = [];
+
+      const labels = [];
+      const counts = [];
+
       for (let y = minYear; y <= maxYear; y++) {
         for (let m = 0; m < 12; m++) {
-          const monthTxnsCount = txns.filter((t) => {
+          const monthTxns = txns.filter((t) => {
             const d = new Date(t.date || t.createdAt);
             return d.getFullYear() === y && d.getMonth() === m;
-          }).length;
-          if (monthTxnsCount) {
+          });
+
+          if (monthTxns.length > 0) {
             labels.push(
               new Date(y, m).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
             );
-            counts.push(monthTxnsCount);
+            counts.push(monthTxns.length);
           }
         }
       }
+
       return { labels, counts };
     }
 
-    return { labels: [], counts: [] };
-  }
-
-  
-  getPaymentSuccessRate(transactions: WorkTeller[], selectedDateRange: string): number {
-    if (!transactions.length) return 0;
-
-    const now = new Date();
-    let periodStart: Date, periodEnd: Date;
-
-    
-    const getMonday = (date: Date): Date => {
-      const d = new Date(date);
-      const day = d.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      d.setDate(d.getDate() + diff);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
-
-    switch (selectedDateRange) {
-      case 'today':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'yesterday':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        break;
-      case 'thisWeek': {
-        const monday = getMonday(now);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      }
-      case 'lastWeek': {
-        const monday = getMonday(now);
-        monday.setDate(monday.getDate() - 7);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        periodEnd = new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate());
-        break;
-      }
-      case 'last7Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        break;
-      case 'last14Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-        break;
-      case 'last30Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
-        break;
-      case 'last60Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
-        break;
-      case 'last90Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90);
-        break;
-      case 'last2Months': {
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const targetMonth = currentMonth - 2;
-        const targetYear = targetMonth < 0 ? currentYear - 1 : currentYear;
-        const adjustedMonth = targetMonth < 0 ? targetMonth + 12 : targetMonth;
-        periodStart = new Date(targetYear, adjustedMonth, 1);
-        periodEnd = new Date(targetYear, adjustedMonth + 1, 0);
-        break;
-      }
-      case 'thisMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        break;
-      case 'lastMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-        break;
-      case 'thisQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3);
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'lastQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3) - 1;
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'thisYear':
-        periodStart = new Date(now.getFullYear(), 0, 1);
-        periodEnd = new Date(now.getFullYear(), 11, 31);
-        break;
-      case 'lastYear':
-        periodStart = new Date(now.getFullYear() - 1, 0, 1);
-        periodEnd = new Date(now.getFullYear() - 1, 11, 31);
-        break;
-      case 'allTime':
-        periodStart = new Date(-8640000000000000);
-        periodEnd = new Date(8640000000000000);
-        break;
-      default:
-        return 0;
-    }
-
-    const filtered = transactions.filter((t) => {
+    const { labels } = this.prepareChartSeries(range, txns);
+    const { periodStart, periodEnd } = this.getDateRangeBounds(range);
+    const filtered = txns.filter((t) => {
       const d = new Date(t.date || t.createdAt);
       return d >= periodStart && d <= periodEnd;
     });
 
-    if (filtered.length === 0) return 0;
+    const counts = Array(labels.length)
+      .fill(0)
+      .map(() => Math.floor(filtered.length / labels.length));
 
-    const paidCount = filtered.filter(
-      (t) =>
-        t.paymentStatus?.toLowerCase() === 'fullypaid' || t.paymentStatus?.toLowerCase() === 'paid'
-    ).length;
-
-    return Math.round((paidCount / filtered.length) * 100);
-  }
-
-  
-  getMostPopularPaymentMethod(transactions: WorkTeller[], selectedDateRange: string): string {
-    if (!transactions.length) return 'N/A';
-
-    const now = new Date();
-    let periodStart: Date, periodEnd: Date;
-
-    const getMonday = (date: Date): Date => {
-      const d = new Date(date);
-      const day = d.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      d.setDate(d.getDate() + diff);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
-
-   
-    switch (selectedDateRange) {
-      case 'today':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'yesterday':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        break;
-      case 'thisWeek': {
-        const monday = getMonday(now);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      }
-      case 'lastWeek': {
-        const monday = getMonday(now);
-        monday.setDate(monday.getDate() - 7);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        periodEnd = new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate());
-        break;
-      }
-      case 'last7Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        break;
-      case 'last14Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-        break;
-      case 'last30Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
-        break;
-      case 'last60Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
-        break;
-      case 'last90Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90);
-        break;
-      case 'last2Months': {
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const targetMonth = currentMonth - 2;
-        const targetYear = targetMonth < 0 ? currentYear - 1 : currentYear;
-        const adjustedMonth = targetMonth < 0 ? targetMonth + 12 : targetMonth;
-        periodStart = new Date(targetYear, adjustedMonth, 1);
-        periodEnd = new Date(targetYear, adjustedMonth + 1, 0);
-        break;
-      }
-      case 'thisMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        break;
-      case 'lastMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-        break;
-      case 'thisQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3);
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'lastQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3) - 1;
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'thisYear':
-        periodStart = new Date(now.getFullYear(), 0, 1);
-        periodEnd = new Date(now.getFullYear(), 11, 31);
-        break;
-      case 'lastYear':
-        periodStart = new Date(now.getFullYear() - 1, 0, 1);
-        periodEnd = new Date(now.getFullYear() - 1, 11, 31);
-        break;
-      case 'allTime':
-        periodStart = new Date(-8640000000000000);
-        periodEnd = new Date(8640000000000000);
-        break;
-      default:
-        return 'N/A';
-    }
-
-    const filtered = transactions.filter((t) => {
-      const d = new Date(t.date || t.createdAt);
-      return d >= periodStart && d <= periodEnd;
-    });
-
-    if (filtered.length === 0) return 'N/A';
-
-    const methodCounts: { [key: string]: number } = {};
-    filtered.forEach((t) => {
-      const method = t.paymentMethod || 'Unknown';
-      methodCounts[method] = (methodCounts[method] || 0) + 1;
-    });
-
-    let maxMethod = 'N/A';
-    let maxCount = 0;
-    Object.entries(methodCounts).forEach(([method, count]) => {
-      if (count > maxCount) {
-        maxCount = count;
-        maxMethod = method;
-      }
-    });
-
-    return maxMethod;
-  }
-
-  
-  getCustomerRevenueSplit(
-    transactions: WorkTeller[],
-    selectedDateRange: string
-  ): { firstTime: number; repeat: number } {
-    if (!transactions.length) return { firstTime: 0, repeat: 0 };
-
-    const now = new Date();
-    let periodStart: Date, periodEnd: Date;
-
-    const getMonday = (date: Date): Date => {
-      const d = new Date(date);
-      const day = d.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      d.setDate(d.getDate() + diff);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
-
-    
-    switch (selectedDateRange) {
-      case 'today':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'yesterday':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        break;
-      case 'thisWeek': {
-        const monday = getMonday(now);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      }
-      case 'lastWeek': {
-        const monday = getMonday(now);
-        monday.setDate(monday.getDate() - 7);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        periodEnd = new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate());
-        break;
-      }
-      case 'last7Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        break;
-      case 'last14Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-        break;
-      case 'last30Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
-        break;
-      case 'last60Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
-        break;
-      case 'last90Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90);
-        break;
-      case 'last2Months': {
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const targetMonth = currentMonth - 2;
-        const targetYear = targetMonth < 0 ? currentYear - 1 : currentYear;
-        const adjustedMonth = targetMonth < 0 ? targetMonth + 12 : targetMonth;
-        periodStart = new Date(targetYear, adjustedMonth, 1);
-        periodEnd = new Date(targetYear, adjustedMonth + 1, 0);
-        break;
-      }
-      case 'thisMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        break;
-      case 'lastMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-        break;
-      case 'thisQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3);
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'lastQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3) - 1;
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'thisYear':
-        periodStart = new Date(now.getFullYear(), 0, 1);
-        periodEnd = new Date(now.getFullYear(), 11, 31);
-        break;
-      case 'lastYear':
-        periodStart = new Date(now.getFullYear() - 1, 0, 1);
-        periodEnd = new Date(now.getFullYear() - 1, 11, 31);
-        break;
-      case 'allTime':
-        periodStart = new Date(-8640000000000000);
-        periodEnd = new Date(8640000000000000);
-        break;
-      default:
-        return { firstTime: 0, repeat: 0 };
-    }
-
-    const periodTransactions = transactions.filter((t) => {
-      const d = new Date(t.date || t.createdAt);
-      return d >= periodStart && d <= periodEnd;
-    });
-
-    const getCustomerId = (t: WorkTeller) =>
-      t.workProfile?.email || t.workProfile?.name || t.customerId;
-
-    
-    const customerFirstDate: { [key: string]: Date } = {};
-    transactions.forEach((t) => {
-      const custId = getCustomerId(t);
-      if (!custId) return;
-      const tDate = new Date(t.date || t.createdAt);
-      if (!customerFirstDate[custId] || tDate < customerFirstDate[custId]) {
-        customerFirstDate[custId] = tDate;
-      }
-    });
-
-    let firstTimeRevenue = 0;
-    let repeatRevenue = 0;
-
-    periodTransactions.forEach((t) => {
-      const custId = getCustomerId(t);
-      if (!custId) {
-        firstTimeRevenue += t.total;
-        return;
-      }
-
-      const firstDate = customerFirstDate[custId];
-      const tDate = new Date(t.date || t.createdAt);
-
-      
-      if (
-        firstDate &&
-        firstDate >= periodStart &&
-        firstDate <= periodEnd &&
-        firstDate.getTime() === tDate.getTime()
-      ) {
-        firstTimeRevenue += t.total;
-      } else {
-        repeatRevenue += t.total;
-      }
-    });
-
-    const total = firstTimeRevenue + repeatRevenue;
-    if (total === 0) return { firstTime: 0, repeat: 0 };
-
-    return {
-      firstTime: Math.round((firstTimeRevenue / total) * 100),
-      repeat: Math.round((repeatRevenue / total) * 100),
-    };
-  }
-
-  
-  getDiscountUtilizationRate(transactions: WorkTeller[], selectedDateRange: string): number {
-    if (!transactions.length) return 0;
-
-    const now = new Date();
-    let periodStart: Date, periodEnd: Date;
-
-    const getMonday = (date: Date): Date => {
-      const d = new Date(date);
-      const day = d.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      d.setDate(d.getDate() + diff);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
-
-    
-    switch (selectedDateRange) {
-      case 'today':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'yesterday':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        break;
-      case 'thisWeek': {
-        const monday = getMonday(now);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      }
-      case 'lastWeek': {
-        const monday = getMonday(now);
-        monday.setDate(monday.getDate() - 7);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        periodEnd = new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate());
-        break;
-      }
-      case 'last7Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        break;
-      case 'last14Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-        break;
-      case 'last30Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
-        break;
-      case 'last60Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
-        break;
-      case 'last90Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90);
-        break;
-      case 'last2Months': {
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const targetMonth = currentMonth - 2;
-        const targetYear = targetMonth < 0 ? currentYear - 1 : currentYear;
-        const adjustedMonth = targetMonth < 0 ? targetMonth + 12 : targetMonth;
-        periodStart = new Date(targetYear, adjustedMonth, 1);
-        periodEnd = new Date(targetYear, adjustedMonth + 1, 0);
-        break;
-      }
-      case 'thisMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        break;
-      case 'lastMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-        break;
-      case 'thisQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3);
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'lastQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3) - 1;
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'thisYear':
-        periodStart = new Date(now.getFullYear(), 0, 1);
-        periodEnd = new Date(now.getFullYear(), 11, 31);
-        break;
-      case 'lastYear':
-        periodStart = new Date(now.getFullYear() - 1, 0, 1);
-        periodEnd = new Date(now.getFullYear() - 1, 11, 31);
-        break;
-      case 'allTime':
-        periodStart = new Date(-8640000000000000);
-        periodEnd = new Date(8640000000000000);
-        break;
-      default:
-        return 0;
-    }
-
-    const filtered = transactions.filter((t) => {
-      const d = new Date(t.date || t.createdAt);
-      return d >= periodStart && d <= periodEnd;
-    });
-
-    if (filtered.length === 0) return 0;
-
-    const withDiscount = filtered.filter((t) => t.discount > 0).length;
-    return Math.round((withDiscount / filtered.length) * 100);
-  }
-
-  
-  getPeakRevenueHours(transactions: WorkTeller[]): string {
-    if (!transactions.length) return 'N/A';
-
-    const hourRevenue = Array(24).fill(0);
-
-    transactions.forEach((t) => {
-      const d = new Date(t.date || t.createdAt);
-      hourRevenue[d.getHours()] += t.total;
-    });
-
-    
-    const hourIndices = hourRevenue.map((_, i) => i);
-    hourIndices.sort((a, b) => hourRevenue[b] - hourRevenue[a]);
-
-    const top3 = hourIndices.slice(0, 3);
-    return top3.map((h) => h.toString().padStart(2, '0') + ':00').join(', ');
-  }
-
-  getRevenueByPaymentMethod(
-    transactions: WorkTeller[],
-    selectedDateRange: string
-  ): { name: string; value: number }[] {
-    if (!transactions.length) return [];
-
-    const now = new Date();
-    let periodStart: Date, periodEnd: Date;
-
-    const getMonday = (date: Date): Date => {
-      const d = new Date(date);
-      const day = d.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      d.setDate(d.getDate() + diff);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
-
-    
-    switch (selectedDateRange) {
-      case 'today':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'yesterday':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        break;
-      case 'thisWeek': {
-        const monday = getMonday(now);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      }
-      case 'lastWeek': {
-        const monday = getMonday(now);
-        monday.setDate(monday.getDate() - 7);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        periodEnd = new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate());
-        break;
-      }
-      case 'last7Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        break;
-      case 'last14Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-        break;
-      case 'last30Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
-        break;
-      case 'last60Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
-        break;
-      case 'last90Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90);
-        break;
-      case 'last2Months': {
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const targetMonth = currentMonth - 2;
-        const targetYear = targetMonth < 0 ? currentYear - 1 : currentYear;
-        const adjustedMonth = targetMonth < 0 ? targetMonth + 12 : targetMonth;
-        periodStart = new Date(targetYear, adjustedMonth, 1);
-        periodEnd = new Date(targetYear, adjustedMonth + 1, 0);
-        break;
-      }
-      case 'thisMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        break;
-      case 'lastMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-        break;
-      case 'thisQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3);
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'lastQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3) - 1;
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'thisYear':
-        periodStart = new Date(now.getFullYear(), 0, 1);
-        periodEnd = new Date(now.getFullYear(), 11, 31);
-        break;
-      case 'lastYear':
-        periodStart = new Date(now.getFullYear() - 1, 0, 1);
-        periodEnd = new Date(now.getFullYear() - 1, 11, 31);
-        break;
-      case 'allTime':
-        periodStart = new Date(-8640000000000000);
-        periodEnd = new Date(8640000000000000);
-        break;
-      default:
-        return [];
-    }
-
-    const filtered = transactions.filter((t) => {
-      const d = new Date(t.date || t.createdAt);
-      return d >= periodStart && d <= periodEnd;
-    });
-
-    const methodRevenue: { [key: string]: number } = {};
-    filtered.forEach((t) => {
-      const method = t.paymentMethod || 'Unknown';
-      methodRevenue[method] = (methodRevenue[method] || 0) + t.total;
-    });
-
-    return Object.entries(methodRevenue)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }
-
-  getRevenueByHour(transactions: WorkTeller[], selectedDateRange: string): number[] {
-    const now = new Date();
-    let periodStart: Date, periodEnd: Date;
-
-    const getMonday = (date: Date): Date => {
-      const d = new Date(date);
-      const day = d.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      d.setDate(d.getDate() + diff);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
-
-    switch (selectedDateRange) {
-      case 'today':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'yesterday':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        break;
-      case 'thisWeek': {
-        const monday = getMonday(now);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      }
-      case 'lastWeek': {
-        const monday = getMonday(now);
-        monday.setDate(monday.getDate() - 7);
-        periodStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        periodEnd = new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate());
-        break;
-      }
-      case 'last7Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        break;
-      case 'last14Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-        break;
-      case 'last30Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
-        break;
-      case 'last60Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
-        break;
-      case 'last90Days':
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90);
-        break;
-      case 'last2Months': {
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const targetMonth = currentMonth - 2;
-        const targetYear = targetMonth < 0 ? currentYear - 1 : currentYear;
-        const adjustedMonth = targetMonth < 0 ? targetMonth + 12 : targetMonth;
-        periodStart = new Date(targetYear, adjustedMonth, 1);
-        periodEnd = new Date(targetYear, adjustedMonth + 1, 0);
-        break;
-      }
-      case 'thisMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        break;
-      case 'lastMonth':
-        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        periodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-        break;
-      case 'thisQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3);
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'lastQuarter': {
-        const quarter = Math.floor(now.getMonth() / 3) - 1;
-        const startMonth = quarter * 3;
-        periodStart = new Date(now.getFullYear(), startMonth, 1);
-        periodEnd = new Date(now.getFullYear(), startMonth + 3, 0);
-        break;
-      }
-      case 'thisYear':
-        periodStart = new Date(now.getFullYear(), 0, 1);
-        periodEnd = new Date(now.getFullYear(), 11, 31);
-        break;
-      case 'lastYear':
-        periodStart = new Date(now.getFullYear() - 1, 0, 1);
-        periodEnd = new Date(now.getFullYear() - 1, 11, 31);
-        break;
-      case 'allTime':
-        periodStart = new Date(-8640000000000000);
-        periodEnd = new Date(8640000000000000);
-        break;
-      default:
-        periodStart = new Date(-8640000000000000);
-        periodEnd = new Date(8640000000000000);
-        break;
-    }
-
-    
-    const filtered = transactions.filter((t) => {
-      const d = new Date(t.date || t.createdAt);
-      return d >= periodStart && d <= periodEnd;
-    });
-
-    const hourRevenue = Array(24).fill(0);
-
-    filtered.forEach((t) => {
-      const d = new Date(t.date || t.createdAt);
-      hourRevenue[d.getHours()] += t.total;
-    });
-
-    return hourRevenue;
+    return { labels, counts };
   }
 }
